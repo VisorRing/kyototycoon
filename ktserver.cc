@@ -14,7 +14,10 @@
 
 
 #include "cmdcommon.h"
+#include "hmac.h"
 
+#define SIGSI		60
+#define SIGALLOW	30
 
 enum {                                   // enumeration for operation counting
   CNTSET,                                // setting operations
@@ -55,10 +58,12 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
                     const char* logpath, uint32_t logkinds,
                     const char* ulogpath, int64_t ulim, double uasi,
                     int32_t sid, int32_t omode, double asi, bool ash,
-                    const char* bgspath, double bgsi, kc::Compressor* bgscomp, bool dmn,
+                    const char* bgspath, double bgsi, kc::Compressor* bgscomp, bool bgsbackup,
+		    bool dmn,
                     const char* pidpath, const char* cmdpath, const char* scrpath,
                     const char* mhost, int32_t mport, const char* rtspath, double riv,
-                    const char* plsvpath, const char* plsvex, const char* pldbpath);
+                    const char* plsvpath, const char* plsvex, const char* pldbpath,
+		    const char* sigmapfile, const char* slaveacckey, int sigallow);
 static bool dosnapshot(const char* bgspath, kc::Compressor* bgscomp,
                        kt::TimedDB* dbs, int32_t dbnum, kt::RPCServer* serv);
 
@@ -169,10 +174,12 @@ class Slave : public kc::Thread {
     hup_ = true;
   }
   // set the configuration of the master
-  void set_master(const std::string& host, int32_t port, uint64_t ts, double iv) {
+    void set_master(const std::string& host, int32_t port, const std::string& acckey, uint64_t ts, double iv) {
     kc::ScopedSpinLock lock(&lock_);
     host_ = host;
     port_ = port;
+    if (serv_)
+	serv_->set_sigObjAcckey (acckey);
     wrts_ = ts;
     if (iv >= 0) riv_ = iv;
   }
@@ -225,7 +232,8 @@ class Slave : public kc::Thread {
           lock_.unlock();
         }
         kt::ReplicationClient rc;
-        if (rc.open(host, port, 60, rts_, sid_, 0, secure_, ca_, pk_, cert_)) {
+        if (rc.open(host, port, 60, rts_, sid_, 0, secure_, ca_, pk_, cert_, serv_->reveal_core ()->reveal_core ())) {	// レプリケーション スレーブ
+	    // 0xB1受け取り後
           serv_->log(Logger::SYSTEM, "replication started: host=%s port=%d rts=%llu",
                      host.c_str(), port, (unsigned long long)rts_);
           hup_ = false;
@@ -350,14 +358,16 @@ class Worker : public kt::RPCServer::Worker {
   explicit Worker(int32_t thnum, kc::CondMap* condmap, kt::TimedDB* dbs, int32_t dbnum,
                   const std::map<std::string, int32_t>& dbmap, int32_t omode,
                   double asi, bool ash, const char* bgspath, double bgsi,
-                  kc::Compressor* bgscomp, kt::UpdateLogger* ulog, DBUpdateLogger* ulogdbs,
+                  kc::Compressor* bgscomp, bool bgsbackup,
+		  kt::UpdateLogger* ulog, DBUpdateLogger* ulogdbs,
                   const char* cmdpath, ScriptProcessor* scrprocs, OpCount* opcounts) :
       thnum_(thnum), condmap_(condmap), dbs_(dbs), dbnum_(dbnum), dbmap_(dbmap),
-      omode_(omode), asi_(asi), ash_(ash), bgspath_(bgspath), bgsi_(bgsi), bgscomp_(bgscomp),
+      omode_(omode), asi_(asi), ash_(ash), bgspath_(bgspath), bgsi_(bgsi), bgscomp_(bgscomp), bgsbackup_(bgsbackup),
       ulog_(ulog), cmdpath_(cmdpath), scrprocs_(scrprocs),
       opcounts_(opcounts), idlecnt_(0), asnext_(0), bgsnext_(0), slave_(NULL) {
     asnext_ = kc::time() + asi_;
     bgsnext_ = kc::time() + bgsi_;
+    sigsnext_ = kc::time () + SIGSI;
   }
   // set miscellaneous configuration
   void set_misc_conf(Slave* slave) {
@@ -576,37 +586,74 @@ class Worker : public kt::RPCServer::Worker {
     int32_t magic = sess->receive_byte();
     const char* cmd;
     bool rv;
-    switch (magic) {
-      case kt::RemoteDB::BMREPLICATION: {
-        cmd = "bin_replication";
-        rv = do_bin_replication(serv, sess);
-        break;
-      }
-      case kt::RemoteDB::BMPLAYSCRIPT: {
-        cmd = "bin_play_script";
-        rv = do_bin_play_script(serv, sess);
-        break;
-      }
-      case kt::RemoteDB::BMSETBULK: {
-        cmd = "bin_set_bulk";
-        rv = do_bin_set_bulk(serv, sess);
-        break;
-      }
-      case kt::RemoteDB::BMREMOVEBULK: {
-        cmd = "bin_remove_bulk";
-        rv = do_bin_remove_bulk(serv, sess);
-        break;
-      }
-      case kt::RemoteDB::BMGETBULK: {
-        cmd = "bin_get_bulk";
-        rv = do_bin_get_bulk(serv, sess);
-        break;
-      }
-      default: {
-        cmd = "bin_unknown";
-        rv = false;
-        break;
-      }
+    if (serv->sigObj->isActive ()) {
+//    serv->log (kt::ThreadedServer::Logger::DEBUG, "process_binary auth mode");
+	switch (magic) {
+	case kt::RemoteDB::BMREPLICATION_AUTH: {
+	    cmd = "bin_replication";
+	    rv = do_bin_replication(serv, sess, true);
+	    break;
+	}
+	case kt::RemoteDB::BMPLAYSCRIPT_AUTH: {
+	    cmd = "bin_play_script";
+	    rv = do_bin_play_script(serv, sess, true);
+	    break;
+	}
+	case kt::RemoteDB::BMSETBULK_AUTH: {
+	    cmd = "bin_set_bulk";
+	    rv = do_bin_set_bulk(serv, sess, true);
+	    break;
+	}
+	case kt::RemoteDB::BMREMOVEBULK_AUTH: {
+	    cmd = "bin_remove_bulk";
+	    rv = do_bin_remove_bulk(serv, sess, true);
+	    break;
+	}
+	case kt::RemoteDB::BMGETBULK_AUTH: {
+	    cmd = "bin_get_bulk";
+	    rv = do_bin_get_bulk(serv, sess, true);
+	    break;
+	}
+	default: {
+	    cmd = "bin_unknown";
+	    serv->log (kt::ThreadedServer::Logger::INFO, "authorization required");
+	    rv = false;
+	    break;
+	}
+	}
+    } else {
+	switch (magic) {
+	case kt::RemoteDB::BMREPLICATION: {
+	    cmd = "bin_replication";
+	    rv = do_bin_replication(serv, sess, false);
+	    break;
+	}
+	case kt::RemoteDB::BMPLAYSCRIPT: {
+	    cmd = "bin_play_script";
+	    rv = do_bin_play_script(serv, sess, false);
+	    break;
+	}
+	case kt::RemoteDB::BMSETBULK: {
+	    cmd = "bin_set_bulk";
+	    rv = do_bin_set_bulk(serv, sess, false);
+	    break;
+	}
+	case kt::RemoteDB::BMREMOVEBULK: {
+	    cmd = "bin_remove_bulk";
+	    rv = do_bin_remove_bulk(serv, sess, false);
+	    break;
+	}
+	case kt::RemoteDB::BMGETBULK: {
+	    cmd = "bin_get_bulk";
+	    rv = do_bin_get_bulk(serv, sess, false);
+	    break;
+	}
+	default: {
+	    cmd = "bin_unknown";
+	    rv = false;
+	    break;
+	}
+	}
     }
     std::string expr = sess->expression();
     serv->log(kt::ThreadedServer::Logger::INFO, "(%s): %s: %d", expr.c_str(), cmd, rv);
@@ -648,6 +695,12 @@ class Worker : public kt::RPCServer::Worker {
       serv->log(Logger::INFO, "snapshotting databases");
       dosnapshot(bgspath_, bgscomp_, dbs_, dbnum_, serv);
       bgsnext_ = kc::time() + bgsi_;
+    }
+    if (kc::time () >= sigsnext_) {
+//	serv->log (Logger::INFO, "checking signature table");
+	if (serv->reveal_core ()->reveal_core ()->sigObj->loaddb ())
+	    serv->log (Logger::INFO, "signature table updated");
+	sigsnext_ = kc::time () + SIGSI;
     }
   }
   // process the starting event
@@ -735,6 +788,13 @@ class Worker : public kt::RPCServer::Worker {
       uint64_t cc = kt::UpdateLogger::clock_pure();
       uint64_t delay = cc > rts ? cc - rts : 0;
       set_message(outmap, "repl_delay", "%.6f", delay / 1000000000.0);
+      if (serv &&
+	  serv->reveal_core () &&
+	  serv->reveal_core ()->reveal_core () &&
+	  serv->reveal_core ()->reveal_core ()->sigObj &&
+	  serv->reveal_core ()->reveal_core ()->sigObj->isActive ()) {
+	  set_message(outmap, "repl_accesskey", "%s", serv->reveal_core ()->reveal_core ()->sigObj->slaveAccKey.c_str ());
+      }
     }
     OpCount ocsum;
     for (int32_t i = 0; i <= CNTMISC; i++) {
@@ -819,6 +879,8 @@ class Worker : public kt::RPCServer::Worker {
     const char* rp = kt::strmapget(inmap, "port");
     int32_t port = rp ? kc::atoi(rp) : 0;
     if (port < 1) port = kt::DEFPORT;
+    const char* acckey = kt::strmapget (inmap, "acckey");
+    if (!acckey) acckey = "";
     rp = kt::strmapget(inmap, "ts");
     uint64_t ts = kc::UINT64MAX;
     if (rp) {
@@ -842,9 +904,9 @@ class Worker : public kt::RPCServer::Worker {
     } else {
       std::sprintf(ivstr, "%.6f", iv);
     }
-    serv->log(Logger::SYSTEM, "replication setting was modified: host=%s port=%d ts=%s iv=%s",
-              host, port, tsstr, ivstr);
-    slave_->set_master(host, port, ts, iv);
+    serv->log(Logger::SYSTEM, "replication setting was modified: host=%s port=%d acckey=%s ts=%s iv=%s",
+              host, port, acckey, tsstr, ivstr);
+    slave_->set_master(host, port, acckey, ts, iv);
     slave_->restart();
     return kt::RPCClient::RVSUCCESS;
   }
@@ -2266,7 +2328,61 @@ class Worker : public kt::RPCServer::Worker {
     return code;
   }
   // process the binary replication command
-  bool do_bin_replication(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+  bool  sigauth_bin (kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, unsigned magic) {
+      char  tbuf[sizeof (uint16_t) * 3 + sizeof (uint64_t)];   // asiz + usiz + ssiz + date
+      if (! sess->receive (tbuf, sizeof (tbuf)))
+	  return false;
+      const char*  p = tbuf;
+      uint32_t  asiz = kc::readfixnum (p, sizeof (uint16_t));
+      p += sizeof (uint16_t);
+      uint32_t  usiz = kc::readfixnum (p, sizeof (uint16_t));
+      p += sizeof (uint16_t);
+      uint32_t  ssiz = kc::readfixnum (p, sizeof (uint16_t));
+      p += sizeof (uint16_t);
+      std::string  date (p, sizeof (uint64_t));
+      uint64_t  tmdate = kc::readfixnum (p, sizeof (uint64_t));
+      p += sizeof (uint64_t);
+      if (! serv->sigObj->inTime (time (NULL), tmdate)) {
+	  return false;
+      }
+      std::string  acckey (asiz, 0);
+      std::string  nunce (usiz, 0);
+      std::string  sig (ssiz, 0);
+      if (! sess->receive ((void*)acckey.data (), asiz))
+	  return false;
+      if (! sess->receive ((void*)nunce.data (), usiz))
+	  return false;
+      if (! sess->receive ((void*)sig.data (), ssiz))
+	  return false;
+      std::string  text;
+      text.assign (1, magic).append (date).append (acckey).append (nunce);
+      std::map<std::string, std::string>::const_iterator  isec;
+      if (serv->sigObj->find (acckey, isec)) {
+//      serv->log (kt::ThreadedServer::Logger::DEBUG, "check signature: key=%s  text=%s signature=%s", acckey.c_str (), text.c_str (), sig.c_str ());
+	  if (hmac_sha256 (isec->second, text) == sig) {
+	      return true;
+	  } else {
+	      return false;
+          }
+      } else {
+	  return false;
+      }
+  }
+  void  bin_forbidden_response (kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+      serv->log (kt::ThreadedServer::Logger::INFO, "forbidden");
+      char  buf[4];
+      buf[0] = kt::RemoteDB::BMERROR;
+      sess->send (buf, 1);
+  }
+  bool do_bin_replication(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, bool fauth) {
+//    serv->log (kt::ThreadedServer::Logger::DEBUG, "do_bin_replication:%d", fauth);
+    if (fauth) {
+	if (! sigauth_bin (serv, sess, kt::RemoteDB::BMREPLICATION_AUTH)) {
+	    bin_forbidden_response (serv, sess);
+	    return false;
+	}
+//	serv->log (kt::ThreadedServer::Logger::DEBUG, "sigauth accepted");
+    }
     char tbuf[sizeof(uint32_t)+sizeof(uint64_t)+sizeof(uint16_t)];
     if (!sess->receive(tbuf, sizeof(tbuf))) return false;
     const char* rp = tbuf;
@@ -2366,7 +2482,13 @@ class Worker : public kt::RPCServer::Worker {
     return !err;
   }
   // process the binary play_script command
-  bool do_bin_play_script(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+  bool do_bin_play_script(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, bool fauth) {
+    if (fauth) {
+	if (! sigauth_bin (serv, sess, kt::RemoteDB::BMPLAYSCRIPT_AUTH)) {
+	    bin_forbidden_response (serv, sess);
+	    return false;
+	}
+    }
     uint32_t thid = sess->thread_id();
     char tbuf[sizeof(uint32_t)+sizeof(uint32_t)+sizeof(uint32_t)];
     if (!sess->receive(tbuf, sizeof(tbuf))) return false;
@@ -2460,7 +2582,13 @@ class Worker : public kt::RPCServer::Worker {
     return !err;
   }
   // process the binary set_bulk command
-  bool do_bin_set_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+  bool do_bin_set_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, bool fauth) {
+    if (fauth) {
+	if (! sigauth_bin (serv, sess, kt::RemoteDB::BMSETBULK_AUTH)) {
+	    bin_forbidden_response (serv, sess);
+	    return false;
+	}
+    }
     uint32_t thid = sess->thread_id();
     char tbuf[sizeof(uint32_t)+sizeof(uint32_t)];
     if (!sess->receive(tbuf, sizeof(tbuf))) return false;
@@ -2523,7 +2651,13 @@ class Worker : public kt::RPCServer::Worker {
     return !err;
   }
   // process the binary remove_bulk command
-  bool do_bin_remove_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+  bool do_bin_remove_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, bool fauth) {
+    if (fauth) {
+	if (! sigauth_bin (serv, sess, kt::RemoteDB::BMREMOVEBULK_AUTH)) {
+	    bin_forbidden_response (serv, sess);
+	    return false;
+	}
+    }
     uint32_t thid = sess->thread_id();
     char tbuf[sizeof(uint32_t)+sizeof(uint32_t)];
     if (!sess->receive(tbuf, sizeof(tbuf))) return false;
@@ -2581,7 +2715,13 @@ class Worker : public kt::RPCServer::Worker {
     return !err;
   }
   // process the binary get_bulk command
-  bool do_bin_get_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess) {
+  bool do_bin_get_bulk(kt::ThreadedServer* serv, kt::ThreadedServer::Session* sess, bool fauth) {
+    if (fauth) {
+	if (! sigauth_bin (serv, sess, kt::RemoteDB::BMGETBULK_AUTH)) {
+	    bin_forbidden_response (serv, sess);
+	    return false;
+	}
+    }
     uint32_t thid = sess->thread_id();
     char tbuf[sizeof(uint32_t)+sizeof(uint32_t)];
     if (!sess->receive(tbuf, sizeof(tbuf))) return false;
@@ -2697,6 +2837,7 @@ class Worker : public kt::RPCServer::Worker {
   const char* const bgspath_;
   const double bgsi_;
   kc::Compressor* const bgscomp_;
+  const bool bgsbackup_;
   kt::UpdateLogger* const ulog_;
   const char* const cmdpath_;
   ScriptProcessor* const scrprocs_;
@@ -2704,6 +2845,7 @@ class Worker : public kt::RPCServer::Worker {
   uint64_t idlecnt_;
   double asnext_;
   double bgsnext_;
+  double  sigsnext_;
   Slave* slave_;
 };
 
@@ -2734,10 +2876,13 @@ static void usage() {
           " [-pk file] [-cert file] [-rpk file] [-rcert file] [-tout num]"
           " [-th num] [-log file] [-li|-ls|-le|-lz]"
           " [-ulog dir] [-ulim num] [-uasi num] [-sid num] [-ord] [-oat|-oas|-onl|-otl|-onr]"
-          " [-asi num] [-ash] [-bgs dir] [-bgsi num] [-bgc str]"
+          " [-asi num] [-ash] [-bgs dir] [-bgsi num] [-bgc str] [-bgsb]"
+	  // -bgsb  起動時、終了時のスナップショット作成を抑止する
           " [-dmn] [-pid file] [-cmd dir] [-scr file]"
-          " [-mhost str] [-mport num] [-rts file] [-riv num]"
-          " [-plsv file] [-plex str] [-pldb file] [db...]\n", g_progname);
+          " [-mhost str] [-mport num] [-macckey str] [-rts file] [-riv num]"
+          " [-plsv file] [-plex str] [-pldb file]"
+	  " [-sig file] [-sigallow num]"
+	  " [db...]\n", g_progname);
   eprintf("\n");
   std::exit(1);
 }
@@ -2782,6 +2927,7 @@ static int32_t run(int argc, char** argv) {
   const char* bgspath = NULL;
   double bgsi = DEFBGSI;
   kc::Compressor* bgscomp = NULL;
+  bool bgsbackup = false;
   bool dmn = false;
   const char* pidpath = NULL;
   const char* cmdpath = NULL;
@@ -2800,6 +2946,9 @@ static int32_t run(int argc, char** argv) {
   const char* plsvpath = NULL;
   const char* plsvex = "";
   const char* pldbpath = NULL;
+  const char* sigmapfile = NULL;
+  const char* slaveacckey = NULL;
+  int  sigallow = SIGALLOW;
   for (int32_t i = 1; i < argc; i++) {
     if (!argbrk && argv[i][0] == '-') {
       if (!std::strcmp(argv[i], "--")) {
@@ -2898,6 +3047,8 @@ static int32_t run(int argc, char** argv) {
         } else if (!kc::stricmp(cn, "lzma") || !kc::stricmp(cn, "xz")) {
           bgscomp = new kc::LZMACompressor<kc::LZMA::RAW>;
         }
+      } else if (!std::strcmp(argv[i], "-bgsb")) {
+	  bgsbackup = true;
       } else if (!std::strcmp(argv[i], "-dmn")) {
         dmn = true;
       } else if (!std::strcmp(argv[i], "-pid")) {
@@ -2930,6 +3081,15 @@ static int32_t run(int argc, char** argv) {
       } else if (!std::strcmp(argv[i], "-pldb")) {
         if (++i >= argc) usage();
         pldbpath = argv[i];
+      } else if (! std::strcmp (argv[i], "-sig")) {
+	  if (++i >= argc) usage ();
+	  sigmapfile = argv[i];
+      } else if (! std::strcmp (argv[i], "-macckey")) {
+	  if (++ i >= argc) usage ();
+	  slaveacckey = argv[i];
+      } else if (! std::strcmp (argv[i], "-sigallow")) {
+	  if (++ i >= argc) usage ();
+	  sigallow = kc::atoix (argv[i]);
       } else {
         usage();
       }
@@ -2947,9 +3107,9 @@ static int32_t run(int argc, char** argv) {
   int32_t rv = proc(dbpaths, host, port, auxhost, auxport,
                     secure, msecure, capath, rpkpath, rcertpath, pkpath, certpath,
                     tout, thnum, logpath, logkinds, ulogpath, ulim, uasi,
-                    sid, omode, asi, ash, bgspath, bgsi, bgscomp,
+                    sid, omode, asi, ash, bgspath, bgsi, bgscomp, bgsbackup,
                     dmn, pidpath, cmdpath, scrpath, mhost, mport, rtspath, riv,
-                    plsvpath, plsvex, pldbpath);
+                    plsvpath, plsvex, pldbpath, sigmapfile, slaveacckey, sigallow);
   delete bgscomp;
   return rv;
 }
@@ -2967,10 +3127,12 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
                     const char* logpath, uint32_t logkinds,
                     const char* ulogpath, int64_t ulim, double uasi,
                     int32_t sid, int32_t omode, double asi, bool ash,
-                    const char* bgspath, double bgsi, kc::Compressor* bgscomp, bool dmn,
+                    const char* bgspath, double bgsi, kc::Compressor* bgscomp, bool bgsbackup,
+		    bool dmn,
                     const char* pidpath, const char* cmdpath, const char* scrpath,
                     const char* mhost, int32_t mport, const char* rtspath, double riv,
-                    const char* plsvpath, const char* plsvex, const char* pldbpath) {
+                    const char* plsvpath, const char* plsvex, const char* pldbpath,
+		    const char* sigmapfile, const char* slaveacckey, int sigallow) {
   g_daemon = false;
   if (dmn) {
     if (kc::File::PATHCHR == '/') {
@@ -3196,7 +3358,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
           kc::strprintf(&path, "%s%c%s", bgspath, kc::File::PATHCHR, nstr);
           uint64_t ssts;
           int64_t sscount, sssize;
-          if (kt::TimedDB::status_snapshot_atomic(path, &ssts, &sscount, &sssize)) {
+          if (! bgsbackup && kt::TimedDB::status_snapshot_atomic(path, &ssts, &sscount, &sssize)) {
             serv.log(Logger::SYSTEM,
                      "applying a snapshot file: db=%d ts=%llu count=%lld size=%lld",
                      idx, (unsigned long long)ssts, (long long)sscount, (long long)sssize);
@@ -3216,7 +3378,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
     serv.log(Logger::SYSTEM, "loading a script file: path=%s", scrpath);
     scrprocs = new ScriptProcessor[thnum];
     for (int32_t i = 0; i < thnum; i++) {
-      if (!scrprocs[i].set_resources(i, &serv, dbs, dbnum, &dbmap)) {
+      if (!scrprocs[i].set_resources(i, &serv, dbs, dbnum, &dbmap, sid)) {
         serv.log(Logger::ERROR, "could not initialize the scripting processor");
         delete[] scrprocs;
         delete[] dbs;
@@ -3228,6 +3390,12 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
         serv.log(Logger::ERROR, "could not load a script file: %s", scrpath);
     }
   }
+  HMacSignature  sigObj (sigmapfile, sigallow);
+  if (slaveacckey)
+      sigObj.slaveAccKey = slaveacckey;
+  sigObj.loaddb ();
+  serv.set_sigObj (&sigObj);
+//  serv.log (Logger::DEBUG, "sig isActive:%d map:%s", sigObj.isActive (), sigObj.pathKeymap);
   kt::SharedLibrary plsvlib;
   kt::PluggableServer* plsv = NULL;
   if (plsvpath) {
@@ -3260,7 +3428,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
     }
   }
   kc::CondMap condmap;
-  Worker worker(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp,
+  Worker worker(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp, bgsbackup,
                 ulog, ulogdbs, cmdpath, scrprocs, opcounts);
   serv.set_worker(&worker, thnum);
   Worker worker_aux(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp,
@@ -3327,7 +3495,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
       serv.log(Logger::SYSTEM, "reloading a script file: path=%s", scrpath);
       for (int32_t i = 0; i < thnum; i++) {
         scrprocs[i].clear();
-        if (!scrprocs[i].set_resources(i, &serv, dbs, dbnum, &dbmap)) {
+        if (!scrprocs[i].set_resources(i, &serv, dbs, dbnum, &dbmap, sid)) {
           serv.log(Logger::ERROR, "could not initialize the scripting processor");
           err = true;
           break;
@@ -3337,6 +3505,8 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
       }
     }
     if (err) break;
+    if (sigObj.loaddb ())
+	serv.log (Logger::INFO, "signature table updated");
   }
   if (pidpath) kc::File::remove(pidpath);
   delete[] opcounts;
@@ -3347,7 +3517,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
       err = true;
     }
   }
-  if (bgspath) {
+  if (bgspath && ! bgsbackup) {
     serv.log(Logger::SYSTEM, "snapshotting databases");
     if (!dosnapshot(bgspath, bgscomp, dbs, dbnum, &serv)) err = true;
   }
@@ -3415,6 +3585,20 @@ static bool dosnapshot(const char* bgspath, kc::Compressor* bgscomp,
       serv->log(Logger::INFO, "retrying snapshot: %d", cnt);
     }
     kc::Thread::yield();
+  }
+  std::string  destpath;
+  std::string  tmppath;
+  std::string  tm;
+  kc::File  file;
+  kc::strprintf (&destpath, "%s%clastsnapshot.time", bgspath, kc::File::PATHCHR);
+  kc::strprintf (&tmppath, "%s-tmp", destpath.c_str ());
+  if (file.open (tmppath, kc::File::OWRITER | kc::File::OCREATE | kc::File::OTRUNCATE)) {
+      kc::strprintf (&tm, "%lld", (long long)kc::time ());
+      file.append (tm);
+      file.close ();
+      if (! kc::File::rename (tmppath, destpath)) {
+	  serv->log (Logger::ERROR, "renaming a file failed: %s: %s", tmppath.c_str(), destpath.c_str ());
+      }
   }
   return !err;
 }

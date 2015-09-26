@@ -12,6 +12,7 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *************************************************************************************************/
 
+//#define lua_objlen lua_rawlen
 
 #include "myscript.h"
 #include "myconf.h"
@@ -68,6 +69,8 @@ static int kt_arraydump(lua_State *lua);
 static int kt_arrayload(lua_State *lua);
 static int kt_mapdump(lua_State *lua);
 static int kt_mapload(lua_State *lua);
+static int kt_e64(lua_State* lua);
+static int kt_e64f(lua_State* lua);
 static void define_err(lua_State* lua);
 static int err_new(lua_State* lua);
 static int err_tostring(lua_State* lua);
@@ -252,7 +255,7 @@ ScriptProcessor::~ScriptProcessor() {
  */
 bool ScriptProcessor::set_resources(int32_t thid, kt::RPCServer* serv,
                                     kt::TimedDB* dbs, int32_t dbnum,
-                                    const std::map<std::string, int32_t>* dbmap) {
+                                    const std::map<std::string, int32_t>* dbmap, int32_t sid) {
   _assert_(serv && dbs && dbnum >= 0 && dbmap);
   ScriptProcessorCore* core = (ScriptProcessorCore*)opq_;
   lua_State *lua = luaL_newstate();
@@ -277,6 +280,7 @@ bool ScriptProcessor::set_resources(int32_t thid, kt::RPCServer* serv,
   setfielduint(lua, "RVELOGIC", kt::RPCClient::RVELOGIC);
   setfielduint(lua, "RVEINTERNAL", kt::RPCClient::RVEINTERNAL);
   setfielduint(lua, "thid", thid);
+  setfielduint(lua, "sid", sid);
   lua_getfield(lua, -1, "DB");
   lua_newtable(lua);
   for (int32_t i = 0; i < dbnum; i++) {
@@ -761,6 +765,8 @@ static void define_module(lua_State* lua) {
   setfieldfunc(lua, "arrayload", kt_arrayload);
   setfieldfunc(lua, "mapdump", kt_mapdump);
   setfieldfunc(lua, "mapload", kt_mapload);
+  setfieldfunc(lua, "e64", kt_e64);
+  setfieldfunc(lua, "e64f", kt_e64f);
 }
 
 
@@ -1680,6 +1686,56 @@ static int kt_mapload(lua_State *lua) {
   return 1;
 }
 
+static char e64char[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~";
+static int kt_e64(lua_State* lua) {
+    int32_t argc = lua_gettop(lua);
+    if (argc < 1) throwinvarg(lua, __KCFUNC__);
+    double num = lua_tonumber(lua, 1);
+    std::string xstr;
+    uint64_t wnum;
+    char wbuf[kc::NUMBUFSIZ], *wp;
+    wnum = num;
+    wp = wbuf;
+    if (wnum & 0x8000000000000000ULL) {
+	// negative
+	wnum = wnum & 0x7fffffffffffffffULL;
+    } else {
+	// positive
+	wnum |= 0x8000000000000000ULL;
+    }
+    for (int i = 10; i >= 0; -- i) {
+	wbuf[i] = e64char[wnum & 0x3fULL];
+	wnum >>= 6;
+    }
+    xstr.append (wbuf, 11);
+    lua_pushlstring(lua, xstr.data(), xstr.size());
+    return 1;
+}
+
+static int kt_e64f(lua_State* lua) {
+    int32_t argc = lua_gettop(lua);
+    if (argc < 1) throwinvarg(lua, __KCFUNC__);
+    double num = lua_tonumber(lua, 1);
+    std::string xstr;
+    uint64_t wnum;
+    char wbuf[kc::NUMBUFSIZ], *wp;
+    memcpy (&wnum, &num, sizeof (wnum));	// 指数部がMSB側であること
+    wp = wbuf;
+    if (wnum & 0x8000000000000000ULL) {
+	// negative
+	wnum ^= 0xffffffffffffffffULL;
+    } else {
+	// positive
+	wnum |= 0x8000000000000000ULL;
+    }
+    for (int i = 10; i >= 0; -- i) {
+	wbuf[i] = e64char[wnum & 0x3fULL];
+	wnum >>= 6;
+    }
+    xstr.append (wbuf, 11);
+    lua_pushlstring(lua, xstr.data(), xstr.size());
+    return 1;
+}
 
 /**
  * Define objects of the Error class.
@@ -3680,7 +3736,7 @@ ScriptProcessor::~ScriptProcessor() {
  */
 bool ScriptProcessor::set_resources(int32_t thid, kt::RPCServer* serv,
                                     kt::TimedDB* dbs, int32_t dbnum,
-                                    const std::map<std::string, int32_t>* dbmap) {
+                                    const std::map<std::string, int32_t>* dbmap, int32_t sid) {
   _assert_(serv && dbs && dbnum >= 0 && dbmap);
   ScriptProcessorCore* core = (ScriptProcessorCore*)opq_;
   core->thid = thid;

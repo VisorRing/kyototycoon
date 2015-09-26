@@ -55,7 +55,7 @@ class ScriptProcessor {
    * @return the return value of the procedure.
    */
   bool set_resources(int32_t thid, kt::RPCServer* serv, kt::TimedDB* dbs, int32_t dbnum,
-                     const std::map<std::string, int32_t>* dbmap);
+                     const std::map<std::string, int32_t>* dbmap, int32_t sid);
   /**
    * Load a script file.
    * @param path the path of the sciprt file.

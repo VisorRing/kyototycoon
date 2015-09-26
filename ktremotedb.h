@@ -697,6 +697,11 @@ class RemoteDB {
     BMSETBULK = 0xb8,                    ///< set in bulk
     BMREMOVEBULK = 0xb9,                 ///< remove in bulk
     BMGETBULK = 0xba,                    ///< get in bulk
+    BMREPLICATION_AUTH = 0xc1,		 ///< replication
+    BMPLAYSCRIPT_AUTH = 0xc4,		 ///< call a scripting procedure
+    BMSETBULK_AUTH = 0xc8,		 ///< set in bulk
+    BMREMOVEBULK_AUTH = 0xc9,		 ///< remove in bulk
+    BMGETBULK_AUTH = 0xca,		 ///< get in bulk
     BMERROR = 0xbf                       ///< error
   };
   /**
@@ -2318,6 +2323,39 @@ class ReplicationClient {
   explicit ReplicationClient() : sock_(), alive_(false) {
     _assert_(true);
   }
+  bool  sigauth_bin (const ThreadedServer* serv, unsigned magic) {
+      // シグネチャ付きコマンドの送信
+      // slaveAccKeyがセットされていること
+      std::string  text;
+      // date, nunce
+      uint64_t  tm = time (NULL);	// 64bit time
+      tm = kc::hton64 (tm);
+      std::string  date ((char*)&tm, sizeof (tm));
+      std::string  nunce = serv->sigObj->rand.randomKey ();
+      text.assign (1, magic).append (date).append (serv->sigObj->slaveAccKey).append (nunce);
+      std::map<std::string, std::string>::const_iterator  isec;
+      std::string  sig;
+      if (serv->sigObj->find (serv->sigObj->slaveAccKey, isec)) {
+	  sig = hmac_sha256 (isec->second, text);
+      } else {
+	  return false;
+      }
+      std::string  tbuf;
+      tbuf.append (1, magic);
+      uint16_t  ib;
+      ib = kc::hton16 (serv->sigObj->slaveAccKey.size ());
+      tbuf.append ((char*)&ib, sizeof (uint16_t));
+      ib = kc::hton16 (nunce.size ());
+      tbuf.append ((char*)&ib, sizeof (uint16_t));
+      ib = kc::hton16 (sig.size ());
+      tbuf.append ((char*)&ib, sizeof (uint16_t));
+      tbuf.append ((char*)&tm, sizeof (uint64_t)).append (serv->sigObj->slaveAccKey).append (nunce).append (sig);
+      if (! sock_.send (tbuf.data (), tbuf.size ())) {
+	  return false;
+      }
+      return true;
+  }
+
   /**
    * Open the connection.
    * @param host the name or the address of the server.  If it is an empty string, the local host
@@ -2337,7 +2375,8 @@ class ReplicationClient {
    */
   bool open(const std::string& host = "", int32_t port = DEFPORT, double timeout = -1,
             uint64_t ts = 0, uint16_t sid = 0, uint32_t opts = 0, bool secure = false,
-            const char* ca = NULL, const char* pk = NULL, const char* cert = NULL) {
+            const char* ca = NULL, const char* pk = NULL, const char* cert = NULL,
+	    const ThreadedServer* serv = NULL) {
     _assert_(true);
     const std::string& thost = host.empty() ? Socket::get_local_host_name() : host;
     const std::string& addr = Socket::get_host_address(thost);
@@ -2348,6 +2387,11 @@ class ReplicationClient {
     if (!sock_.open(expr, secure, ca, pk, cert)) return false;
     uint32_t flags = 0;
     if (opts & WHITESID) flags |= WHITESID;
+    if (serv && serv->sigObj->slaveActive ()) {
+	bool  rc = sigauth_bin (serv, RemoteDB::BMREPLICATION_AUTH);
+	if (! rc)
+	    return false;
+    }
     char tbuf[1+sizeof(flags)+sizeof(ts)+sizeof(sid)];
     char* wp = tbuf;
     *(wp++) = RemoteDB::BMREPLICATION;
@@ -2357,9 +2401,16 @@ class ReplicationClient {
     wp += sizeof(ts);
     kc::writefixnum(wp, sid, sizeof(sid));
     wp += sizeof(sid);
-    if (!sock_.send(tbuf, sizeof(tbuf)) || sock_.receive_byte() != RemoteDB::BMREPLICATION) {
-      sock_.close();
-      return false;
+    if (serv && serv->sigObj->slaveActive ()) {
+	if (!sock_.send(tbuf + 1, sizeof(tbuf) - 1) || sock_.receive_byte() != RemoteDB::BMREPLICATION) {               // コネクションを張った後は、AUTHなし版
+	    sock_.close();
+	    return false;
+	}
+    } else {
+	if (!sock_.send(tbuf, sizeof(tbuf)) || sock_.receive_byte() != RemoteDB::BMREPLICATION) {
+	    sock_.close();
+	    return false;
+	}
     }
     alive_ = true;
     return true;

@@ -544,11 +544,14 @@ ktutil.o : ktcommon.h ktutil.h myconf.h
 
 ktsocket.o : ktcommon.h ktutil.h ktsocket.h myconf.h
 
-ktthserv.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h myconf.h
+ktthserv.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h myconf.h \
+  hmac.h
 
-kthttp.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h myconf.h
+kthttp.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h myconf.h \
+  hmac.h
 
-ktrpc.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h myconf.h
+ktrpc.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h myconf.h \
+  hmac.h
 
 ktulog.o : ktcommon.h ktutil.h ktulog.h myconf.h
 
@@ -559,26 +562,32 @@ kttimeddb.o : ktcommon.h ktutil.h ktulog.h ktshlib.h kttimeddb.h myconf.h
 ktdbext.o : ktcommon.h ktutil.h ktulog.h ktshlib.h kttimeddb.h ktdbext.h myconf.h
 
 ktremotedb.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
-  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h myconf.h
+  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h myconf.h \
+  hmac.h
 
 ktplugservmemc.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
-  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugserv.h myconf.h
+  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugserv.h myconf.h \
+  hmac.h
 
 ktplugdbvoid.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
-  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugdb.h myconf.h
+  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugdb.h myconf.h \
+  hmac.h
 
 myscript.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
-  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h myconf.h myscript.h
+  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h myconf.h myscript.h \
+  hmac.h
 
 ktlangc.o : ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
-  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugdb.h myconf.h ktlangc.h
+  ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugdb.h myconf.h ktlangc.h \
+  hmac.h
 
 ktutiltest.o ktutilmgr.o ktutilserv.o kttimedtest.o kttimedmgr.o \
   ktserver.o ktremotetest.o ktremotemgr.o : \
   ktcommon.h ktutil.h ktsocket.h ktthserv.h kthttp.h ktrpc.h \
   ktulog.h ktshlib.h kttimeddb.h ktdbext.h ktremotedb.h ktplugserv.h ktplugdb.h \
-  cmdcommon.h myconf.h myscript.h
+  cmdcommon.h myconf.h myscript.h \
+  hmac.h
 
-
+hmac.o: hmac.h
 
 # END OF FILE

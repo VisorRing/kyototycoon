@@ -20,6 +20,7 @@
 #include <ktutil.h>
 #include <ktsocket.h>
 #include <ktthserv.h>
+#include "hmac.h"
 
 namespace kyototycoon {                  // common namespace
 
@@ -912,6 +913,12 @@ class HTTPServer {
     worker_.worker_ = worker;
     serv_.set_worker(&worker_, thnum);
   }
+  void  set_sigObj (HMacSignature* _sigObj) {
+      serv_.set_sigObj (_sigObj);
+  }
+  void  set_sigObjAcckey (const std::string& _acckey) {
+      serv_.set_sigObjAcckey (_acckey);
+  }
   /**
    * Start the service.
    * @param threaded whether to start a threaded server.
@@ -1150,12 +1157,15 @@ class HTTPServer {
    private:
     bool process(ThreadedServer* serv, ThreadedServer::Session* sess) {
       _assert_(true);
+      // check if it is binary protocol
       int32_t magic = sess->receive_byte();
       if (magic < 0) return false;
       sess->undo_receive_byte(magic);
       if (magic == 0 || magic >= 0x80) return worker_->process_binary(serv, sess);
+      // TSV-RPC
       char line[HTTPClient::LINEBUFSIZ];
       if (!sess->receive_line(&line, sizeof(line))) return false;
+      // REQUEST LINE
       std::map<std::string, std::string> misc;
       std::map<std::string, std::string> reqheads;
       reqheads[""] = line;
@@ -1198,6 +1208,7 @@ class HTTPServer {
       } else {
         method = HTTPClient::MUNKNOWN;
       }
+      // HEADER
       bool keep = htver >= 1;
       int64_t clen = -1;
       bool chunked = false;
@@ -1228,6 +1239,40 @@ class HTTPServer {
           }
         }
       }
+      if (serv->sigObj->isActive ()) {
+	  static std::string  kKey (CharConst ("accesskey"));
+	  std::map<std::string, std::string>::const_iterator  ikey = reqheads.find (kKey);
+	  if (ikey == reqheads.end ()) {
+	      send_error (sess, 403, "access key required");
+	      serv->log (Logger::INFO, "access key required");
+	      return false;
+	  }
+	  std::map<std::string, std::string>::const_iterator  isec;
+	  if (serv->sigObj->find (ikey->second, isec)) {
+	      std::string  strtosig;
+	      std::string  yoursignature;
+	      std::string  csig = calc_signature_v2 (isec->first, isec->second, method, path, &reqheads, strtosig);
+	      if (csig.length () == 0) {
+		  std::string  msg ("forbidden by the lack of the headers or the date mismatch");
+		  send_error (sess, 403, msg.c_str ());
+		  serv->log (Logger::INFO, msg.c_str ());
+		  return false;
+	      } else if (! check_signature_v2 (&reqheads, csig, yoursignature)) {
+		  std::string  msg ("forbidden by the signature mismatch");
+		  msg.append (": your signature is \"").append (yoursignature);
+		  msg.append ("\", my signature is \"").append (base64encode (csig));
+		  msg.append ("\", string to sign is \"").append (strtosig).append ("\"");
+		  send_error (sess, 403, msg.c_str ());
+		  serv->log (Logger::INFO, msg.c_str ());
+		  return false;
+	      }
+	  } else {
+	      send_error (sess, 403, "forbidden for the bad access key");
+	      serv->log (Logger::INFO, "forbidden for the bad access key");
+	      return false;
+	  }
+      }
+      // BODY
       std::string reqbody;
       if (method == HTTPClient::MPOST || method == HTTPClient::MPUT ||
           method == HTTPClient::MUNKNOWN) {
@@ -1367,6 +1412,66 @@ class HTTPServer {
       datestrhttp(kc::INT64MAX, 0, buf);
       kc::strprintf(str, "Date: %s\r\n", buf);
     }
+    std::string  calc_signature_v2 (const std::string& accesskey, const std::string& secret, HTTPClient::Method method, const std::string& uri, const std::map<std::string, std::string>* reqheads, std::string& strtosig) {
+	strtosig.resize (0);
+	switch (method) {
+	case HTTPClient::MGET:
+	    strtosig = "GET\n"; /* Method */
+	    break;
+	case HTTPClient::MPOST:
+	    strtosig = "POST\n";
+	    break;
+	case HTTPClient::MPUT:
+	    strtosig = "PUT\n";
+	    break;
+	case HTTPClient::MDELETE:
+	    strtosig = "DELETE\n";
+	    break;
+	default:
+	    strtosig = "UNKNOWN\n";
+	    break;
+	}
+	static std::string  kHost (CharConst ("host"));
+	static std::string  kDate (CharConst ("date"));
+	static std::string  kNonce (CharConst ("x-nonce"));
+	static std::string  kEmpty;
+	tatic std::string  kLF (CharConst ("\n"));
+	std::map<std::string, std::string>::const_iterator  ihost = reqheads->find (kHost);
+	if (ihost == reqheads->end ())
+	    return kEmpty;
+	std::map<std::string, std::string>::const_iterator  idate = reqheads->find (kDate);
+	if (idate == reqheads->end ())
+	    return kEmpty;
+	uint64_t  tm;
+	if (! readHttpDate (idate->second, tm))
+	    return kEmpty;
+	if (! serv_->reveal_core ()->sigObj->inTime (time (NULL), tm)) {
+	    return kEmpty;
+	}
+	std::map<std::string, std::string>::const_iterator  inonce = reqheads->find (kNonce);
+	if (inonce == reqheads->end ())
+	    return kEmpty;
+	std::string  lhost = ihost->second;
+	kc::strtolower (&lhost);
+	strtosig.append (lhost).append (kLF);   /* Host */
+	strtosig.append (uri).append (kLF);     /* URI */
+	strtosig.append (accesskey).append (kLF);
+	strtosig.append (idate->second).append (kLF);   /* Date */
+	strtosig.append (inonce->second);       /* X-Nonce */
+	std::string  sig = hmac_sha256 (secret, strtosig);
+	return sig;
+    };
+    bool  check_signature_v2 (std::map<std::string, std::string>* reqheads, const std::string& sig, std::string& yoursignature) {
+	static std::string  kSignature (CharConst ("signature"));
+	std::map<std::string, std::string>::const_iterator  isig = reqheads->find (kSignature);
+	if (isig == reqheads->end ())
+	    return false;
+	yoursignature = isig->second;
+	if (sig == base64decode (yoursignature))
+	    return true;
+	return false;
+    };
+
     HTTPServer* serv_;
     HTTPServer::Worker* worker_;
   };

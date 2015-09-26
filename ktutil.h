@@ -793,7 +793,7 @@ inline void tsvmapdecode(std::map<std::string, std::string>* map, int32_t mode) 
   std::map<std::string, std::string>::iterator itend = map->end();
   while (it != itend) {
     char* kbuf, *vbuf;
-    size_t ksiz, vsiz;
+    size_t ksiz = 0, vsiz = 0;
     switch (mode) {
       case 'B': case 'b': {
         kbuf = kc::basedecode(it->first.c_str(), &ksiz);

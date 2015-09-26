@@ -21,6 +21,7 @@
 #include <ktsocket.h>
 #include <ktthserv.h>
 #include <kthttp.h>
+#include "hmac.h"
 
 #define KTRPCPATHPREFIX  "/rpc/"           ///< prefix of the RPC entry
 #define KTRPCFORMMTYPE  "application/x-www-form-urlencoded"  ///< MIME type of form data
@@ -469,6 +470,12 @@ class RPCServer {
     worker_.serv_ = this;
     worker_.worker_ = worker;
     serv_.set_worker(&worker_, thnum);
+  }
+  void  set_sigObj (HMacSignature* _sigObj) {
+      serv_.set_sigObj (_sigObj);
+  }
+  void  set_sigObjAcckey (const std::string& _acckey) {
+      serv_.set_sigObjAcckey (_acckey);
   }
   /**
    * Start the service.

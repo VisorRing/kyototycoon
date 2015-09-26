@@ -19,6 +19,7 @@ MYHEADERFILES="$MYHEADERFILES kttimeddb.h ktdbext.h ktremotedb.h ktplugserv.h kt
 MYLIBRARYFILES="libkyototycoon.a"
 MYLIBOBJFILES="ktutil.o ktsocket.o ktthserv.o kthttp.o ktrpc.o ktulog.o ktshlib.o"
 MYLIBOBJFILES="$MYLIBOBJFILES kttimeddb.o ktdbext.o ktremotedb.o ktplugserv.o ktplugdb.o ktlangc.o"
+MYLIBOBJFILES="$MYLIBOBJFILES hmac.o"
 MYSHLIBFILES="ktplugservmemc.so ktplugdbvoid.so"
 MYCOMMANDFILES="ktutiltest ktutilmgr ktutilserv kttimedtest kttimedmgr"
 MYCOMMANDFILES="$MYCOMMANDFILES ktserver ktremotetest ktremotemgr"
@@ -276,6 +277,7 @@ if test "$enable_lua" = "yes"
 then
   AC_CHECK_LIB(lua, main, MYCMDLIBS="$MYCMDLIBS -llua")
   AC_CHECK_LIB(lua$luaver, main, MYCMDLIBS="$MYCMDLIBS -llua$luaver")
+  AC_CHECK_LIB(lua-$luaver, main, MYCMDLIBS="$MYCMDLIBS -llua-$luaver")
 fi
 if test "$enable_sec_openssl" = "yes"
 then
@@ -296,6 +298,7 @@ AC_CHECK_HEADER(kccommon.h, true, AC_MSG_ERROR([kccommon.h is required]))
 if test "$enable_lua" = "yes"
 then
   AC_CHECK_HEADER(lua.h, true, AC_MSG_ERROR([lua.h is required]))
+  AC_CHECK_HEADER(lua52/lua.h, true, AC_MSG_ERROR([lua.h is required]))
 fi
 if test "$enable_sec_openssl" = "yes"
 then

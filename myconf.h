@@ -90,7 +90,7 @@
 
 #endif
 
-#define _KT_VERSION    "1.0.0"
+#define _KT_VERSION    "1.0.0+p1"
 #define _KT_LIBVER     2
 #define _KT_LIBREV     19
 

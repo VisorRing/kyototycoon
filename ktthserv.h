@@ -19,6 +19,7 @@
 #include <ktcommon.h>
 #include <ktutil.h>
 #include <ktsocket.h>
+#incude "hmac.h"
 
 namespace kyototycoon {                  // common namespace
 
@@ -194,7 +195,7 @@ class ThreadedServer : public kc::Thread {
   explicit ThreadedServer() :
       run_(false), secure_(false), ca_(NULL), pk_(NULL), cert_(NULL),
       expr_(), timeout_(0), logger_(NULL), logkinds_(0), worker_(NULL), thnum_(0),
-      sock_(), poll_(), queue_(this), sesscnt_(0), idlesem_(0), timersem_(0) {
+      sock_(), poll_(), queue_(this), sesscnt_(0), idlesem_(0), timersem_(0), sigObj (0) {
     _assert_(true);
   }
   /**
@@ -243,6 +244,13 @@ class ThreadedServer : public kc::Thread {
     _assert_(worker && thnum > 0 && thnum < kc::MEMMAXSIZ);
     worker_ = worker;
     thnum_ = thnum;
+  }
+  void  set_sigObj (HMacSignature* _sigObj) {
+      sigObj = _sigObj;
+  }
+  void  set_sigObjAcckey (const std::string& _acckey) {
+      if (sigObj)
+	  sigObj->slaveAccKey = _acckey;
   }
 
  /**
@@ -577,6 +585,8 @@ class ThreadedServer : public kc::Thread {
   kc::AtomicInt64 idlesem_;
   /** The timer event semaphore. */
   kc::AtomicInt64 timersem_;
+ public:
+  HMacSignature*  sigObj;
 };
 
 
