@@ -12,7 +12,7 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *************************************************************************************************/
 
-//#define lua_objlen lua_rawlen
+#define lua_objlen lua_rawlen
 
 #include "myscript.h"
 #include "myconf.h"

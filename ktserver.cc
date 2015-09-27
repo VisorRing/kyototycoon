@@ -3431,7 +3431,7 @@ static int32_t proc(const std::vector<std::string>& dbpaths,
   Worker worker(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp, bgsbackup,
                 ulog, ulogdbs, cmdpath, scrprocs, opcounts);
   serv.set_worker(&worker, thnum);
-  Worker worker_aux(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp,
+  Worker worker_aux(thnum, &condmap, dbs, dbnum, dbmap, omode, asi, ash, bgspath, bgsi, bgscomp, bgsbackup,
                     ulog, ulogdbs, cmdpath, scrprocs, opcounts);
   if (auxport != kt::UNDEFPORT) {
     std::string expr_aux = kc::strprintf("%s:%d", addr_aux.c_str(), auxport);
