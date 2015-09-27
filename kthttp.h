@@ -1435,7 +1435,7 @@ class HTTPServer {
 	static std::string  kDate (CharConst ("date"));
 	static std::string  kNonce (CharConst ("x-nonce"));
 	static std::string  kEmpty;
-	tatic std::string  kLF (CharConst ("\n"));
+	static std::string  kLF (CharConst ("\n"));
 	std::map<std::string, std::string>::const_iterator  ihost = reqheads->find (kHost);
 	if (ihost == reqheads->end ())
 	    return kEmpty;

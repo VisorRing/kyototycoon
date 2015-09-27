@@ -19,7 +19,7 @@
 #include <ktcommon.h>
 #include <ktutil.h>
 #include <ktsocket.h>
-#incude "hmac.h"
+#include "hmac.h"
 
 namespace kyototycoon {                  // common namespace
 
