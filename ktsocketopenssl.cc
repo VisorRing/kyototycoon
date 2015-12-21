@@ -425,7 +425,7 @@ SecChannel::SecState SecChannel::secstate() {
  * Set the error and message from an OpenSSL rc
  */
 static void seterrmsg(SecChannelOpenSSL *core, int rc) {
-  _assert_(core && msg);
+  _assert_(core);
   int errnum = SSL_get_error(core->ssl, rc);
   switch (errnum) {
   case SSL_ERROR_NONE:

@@ -2,6 +2,9 @@
 #include "ktremotedb.h"
 #include "ktlangc.h"
 
+#undef _assert_
+#define _assert_(a)
+
 using namespace kyototycoon;
 
 extern "C" {

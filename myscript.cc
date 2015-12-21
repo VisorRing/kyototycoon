@@ -71,6 +71,7 @@ static int kt_mapdump(lua_State *lua);
 static int kt_mapload(lua_State *lua);
 static int kt_e64(lua_State* lua);
 static int kt_e64f(lua_State* lua);
+static int kt_d64(lua_State* lua);
 static void define_err(lua_State* lua);
 static int err_new(lua_State* lua);
 static int err_tostring(lua_State* lua);
@@ -767,6 +768,7 @@ static void define_module(lua_State* lua) {
   setfieldfunc(lua, "mapload", kt_mapload);
   setfieldfunc(lua, "e64", kt_e64);
   setfieldfunc(lua, "e64f", kt_e64f);
+  setfieldfunc(lua, "d64", kt_d64);
 }
 
 
@@ -1734,6 +1736,32 @@ static int kt_e64f(lua_State* lua) {
     }
     xstr.append (wbuf, 11);
     lua_pushlstring(lua, xstr.data(), xstr.size());
+    return 1;
+}
+
+static int kt_d64(lua_State* lua) {
+    int32_t argc = lua_gettop(lua);
+    if (argc < 1) throwinvarg(lua, __KCFUNC__);
+    size_t  len;
+    const char*  str = lua_tolstring (lua, 1, &len);
+    if (len != 11) {
+	lua_pushnil (lua);
+	return 1;
+    }
+    uint64_t  ans = 0;
+    char*  c;
+    for (int i = 0; i < len; i ++) {
+	c = strchr (e64char, str[i]);
+	if (c) {
+	    ans <<= 6;
+	    ans |= (c - e64char);
+	} else {
+	    lua_pushnil (lua);
+	    return 1;
+	}
+    }
+    ans ^= 0x8000000000000000ULL;
+    lua_pushinteger (lua, ans);
     return 1;
 }
 

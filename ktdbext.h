@@ -16,6 +16,7 @@
 #ifndef _KTDBEXT_H                       // duplication check
 #define _KTDBEXT_H
 
+#include <myconf.h>
 #include <ktcommon.h>
 #include <ktutil.h>
 #include <ktulog.h>
