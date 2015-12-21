@@ -143,10 +143,11 @@ AC_ARG_ENABLE(lua,
   AC_HELP_STRING([--enable-lua], [build with Lua extension]))
 if test "$enable_lua" = "yes"
 then
-  luaver=`lua -e 'v = string.gsub(_VERSION, ".* ", ""); print(v)'`
+  AC_CHECK_PROGS([lua], [lua lua53 lua52 lua51])
+  luaver=`$lua -e 'v = string.gsub(_VERSION, ".* ", ""); print(v)'`
   MYCPPFLAGS="$MYCPPFLAGS -D_MYLUA"
   MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/lua$luaver -I/usr/local/include/lua$luaver"
-  MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/lua -I/usr/local/include/lua"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/$lua -I/usr/local/include/$lua"
   MYLDFLAGS="$MYLDFLAGS -L/usr/lib/lua$luaver -L/usr/local/lib/lua$luaver"
   MYLDFLAGS="$MYLDFLAGS -L/usr/lib/lua -L/usr/local/lib/lua"
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib/lua$luaver:/usr/local/lib/lua$luaver"
@@ -279,13 +280,13 @@ then
   AC_CHECK_LIB(lua$luaver, main, MYCMDLIBS="$MYCMDLIBS -llua$luaver")
   AC_CHECK_LIB(lua-$luaver, main, MYCMDLIBS="$MYCMDLIBS -llua-$luaver")
 fi
-if test "$enable_sec_openssl" = "yes"
-then
+#if test "$enable_sec_openssl" = "yes"
+#then
   AC_CHECK_LIB(crypto, main)
   AC_CHECK_LIB(crypto, main, MYCMDLIBS="$MYCMDLIBS -lcrypto", AC_MSG_ERROR([crypto is required]))
   AC_CHECK_LIB(ssl, main)
   AC_CHECK_LIB(ssl, main, MYCMDLIBS="$MYCMDLIBS -lssl", AC_MSG_ERROR([ssl is required]))
-fi
+#fi
 AC_CHECK_LIB(kyototycoon, main, AC_MSG_WARN([old version of Kyoto Tycoon was detected]))
 MYLDLIBPATH="$LD_LIBRARY_PATH"
 
@@ -297,8 +298,7 @@ AC_CHECK_HEADER(sys/socket.h, true, AC_MSG_ERROR([sys/socket.h is required]))
 AC_CHECK_HEADER(kccommon.h, true, AC_MSG_ERROR([kccommon.h is required]))
 if test "$enable_lua" = "yes"
 then
-  AC_CHECK_HEADER(lua.h, true, AC_MSG_ERROR([lua.h is required]))
-  AC_CHECK_HEADER(lua52/lua.h, true, AC_MSG_ERROR([lua.h is required]))
+  AC_CHECK_HEADERS([lua.h lua53/lua.h lua52/lua.h lua51/lua.h], [break])
 fi
 if test "$enable_sec_openssl" = "yes"
 then

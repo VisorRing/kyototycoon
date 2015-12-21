@@ -653,6 +653,7 @@ CPPFLAGS
 LDFLAGS
 CFLAGS
 CC
+lua
 target_alias
 host_alias
 build_alias
@@ -2118,6 +2119,7 @@ MYHEADERFILES="$MYHEADERFILES kttimeddb.h ktdbext.h ktremotedb.h ktplugserv.h kt
 MYLIBRARYFILES="libkyototycoon.a"
 MYLIBOBJFILES="ktutil.o ktsocket.o ktthserv.o kthttp.o ktrpc.o ktulog.o ktshlib.o"
 MYLIBOBJFILES="$MYLIBOBJFILES kttimeddb.o ktdbext.o ktremotedb.o ktplugserv.o ktplugdb.o ktlangc.o"
+MYLIBOBJFILES="$MYLIBOBJFILES hmac.o"
 MYSHLIBFILES="ktplugservmemc.so ktplugdbvoid.so"
 MYCOMMANDFILES="ktutiltest ktutilmgr ktutilserv kttimedtest kttimedmgr"
 MYCOMMANDFILES="$MYCOMMANDFILES ktserver ktremotetest ktremotemgr"
@@ -2132,7 +2134,7 @@ MYCXXFLAGS="-Wall -fPIC -fsigned-char -g0 -O2"
 MYCPPFLAGS="-I. -Idep/openssl/include -I\$(INCLUDEDIR) -I/usr/local/include"
 MYCPPFLAGS="$MYCPPFLAGS -DNDEBUG -D_GNU_SOURCE=1"
 MYCPPFLAGS="$MYCPPFLAGS -D_FILE_OFFSET_BITS=64 -D_REENTRANT -D__EXTENSIONS__"
-MYLDFLAGS="-L. -Ldep/openssl -L\$(LIBDIR) -L/usr/local/lib"
+MYLDFLAGS="-L. -Ldef/openssl/lib -L\$(LIBDIR) -L/usr/local/lib"
 MYCMDLDFLAGS=""
 MYCMDLIBS=""
 MYLDLIBPATH=""
@@ -2141,9 +2143,9 @@ MYPOSTCMD="true"
 
 # Building paths
 PATH=".:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:$PATH"
-CPATH=".:$CPATH"
-LIBRARY_PATH=".:$LIBRARY_PATH"
-LD_LIBRARY_PATH=".:$LD_LIBRARY_PATH"
+CPATH=".:/usr/local/include:$CPATH"
+LIBRARY_PATH=".:/usr/local/lib:$LIBRARY_PATH"
+LD_LIBRARY_PATH=".:/usr/local/lib:$LD_LIBRARY_PATH"
 PKG_CONFIG_PATH=".:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 export PATH CPATH LIBRARY_PATH LD_LIBRARY_PATH PKG_CONFIG_PATH
 
@@ -2268,10 +2270,52 @@ fi
 
 if test "$enable_lua" = "yes"
 then
-  luaver=`lua -e 'v = string.gsub(_VERSION, ".* ", ""); print(v)'`
+  for ac_prog in lua lua53 lua52 lua51
+do
+  # Extract the first word of "$ac_prog", so it can be a program name with args.
+set dummy $ac_prog; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_lua+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$lua"; then
+  ac_cv_prog_lua="$lua" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_lua="$ac_prog"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+lua=$ac_cv_prog_lua
+if test -n "$lua"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $lua" >&5
+$as_echo "$lua" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+  test -n "$lua" && break
+done
+
+  luaver=`$lua -e 'v = string.gsub(_VERSION, ".* ", ""); print(v)'`
   MYCPPFLAGS="$MYCPPFLAGS -D_MYLUA"
   MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/lua$luaver -I/usr/local/include/lua$luaver"
-  MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/lua -I/usr/local/include/lua"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/include/$lua -I/usr/local/include/$lua"
   MYLDFLAGS="$MYLDFLAGS -L/usr/lib/lua$luaver -L/usr/local/lib/lua$luaver"
   MYLDFLAGS="$MYLDFLAGS -L/usr/lib/lua -L/usr/local/lib/lua"
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib/lua$luaver:/usr/local/lib/lua$luaver"
@@ -2297,7 +2341,6 @@ then
   MYLDFLAGS="$MYLDFLAGS -Ldep/openssl"
   enables="$enables (sec_openssl)"
 fi
-
 
 # Specify the installation path of Kyoto Cabinet
 
@@ -3641,91 +3684,6 @@ _ACEOF
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssl" >&5
-$as_echo_n "checking for main in -lssl... " >&6; }
-if ${ac_cv_lib_ssl_+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lssl $LIBS"
-MYCMDLIBS="$MYCMDLIBS -lssl"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"; then :
-  ac_cv_lib_ssl_main=yes
-else
-  ac_cv_lib_ssl_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_main" >&5
-$as_echo "$ac_cv_lib_ssl_main" >&6; }
-if test "x$ac_cv_lib_ssl_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBDL 1
-_ACEOF
-
-  LIBS="-lssl $LIBS"
-  MYCMDLIBS="$MYCMDLIBS -lssl"
-
-fi
-
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcrypto" >&5
-$as_echo_n "checking for main in -lcrypto... " >&6; }
-if ${ac_cv_lib_crypto_+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lcrypto $LIBS"
-MYCMDLIBS="$MYCMDLIBS -lcrypto"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"; then :
-  ac_cv_lib_crypto_main=yes
-else
-  ac_cv_lib_crypto_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_crypto_main" >&5
-$as_echo "$ac_cv_lib_crypto_main" >&6; }
-if test "x$ac_cv_lib_crypto_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBDL 1
-_ACEOF
-
-  LIBS="-lcrypto $LIBS"
-  MYCMDLIBS="$MYCMDLIBS -lcrypto"
-
-fi
-
-
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lnsl" >&5
 $as_echo_n "checking for main in -lnsl... " >&6; }
 if ${ac_cv_lib_nsl_main+:} false; then :
@@ -4183,9 +4141,45 @@ if eval test \"x\$"$as_ac_Lib"\" = x"yes"; then :
   MYCMDLIBS="$MYCMDLIBS -llua$luaver"
 fi
 
+  as_ac_Lib=`$as_echo "ac_cv_lib_lua-$luaver''_main" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llua-$luaver" >&5
+$as_echo_n "checking for main in -llua-$luaver... " >&6; }
+if eval \${$as_ac_Lib+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-llua-$luaver  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+  eval "$as_ac_Lib=yes"
+else
+  eval "$as_ac_Lib=no"
 fi
-if test "$enable_sec_openssl" = "yes"
-then
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+eval ac_res=\$$as_ac_Lib
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if eval test \"x\$"$as_ac_Lib"\" = x"yes"; then :
+  MYCMDLIBS="$MYCMDLIBS -llua-$luaver"
+fi
+
+fi
+#if test "$enable_sec_openssl" = "yes"
+#then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcrypto" >&5
 $as_echo_n "checking for main in -lcrypto... " >&6; }
 if ${ac_cv_lib_crypto_main+:} false; then :
@@ -4336,7 +4330,7 @@ else
   as_fn_error $? "ssl is required" "$LINENO" 5
 fi
 
-fi
+#fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lkyototycoon" >&5
 $as_echo_n "checking for main in -lkyototycoon... " >&6; }
 if ${ac_cv_lib_kyototycoon_main+:} false; then :
@@ -4810,13 +4804,18 @@ fi
 
 if test "$enable_lua" = "yes"
 then
-  ac_fn_cxx_check_header_mongrel "$LINENO" "lua.h" "ac_cv_header_lua_h" "$ac_includes_default"
-if test "x$ac_cv_header_lua_h" = xyes; then :
-  true
-else
-  as_fn_error $? "lua.h is required" "$LINENO" 5
+  for ac_header in lua.h lua53/lua.h lua52/lua.h lua51/lua.h
+do :
+  as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
+ac_fn_cxx_check_header_mongrel "$LINENO" "$ac_header" "$as_ac_Header" "$ac_includes_default"
+if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
+  cat >>confdefs.h <<_ACEOF
+#define `$as_echo "HAVE_$ac_header" | $as_tr_cpp` 1
+_ACEOF
+ break
 fi
 
+done
 
 fi
 if test "$enable_sec_openssl" = "yes"
@@ -4855,6 +4854,7 @@ fi
 
 fi
 
+
 # Static linking
 if test "$is_static" = "yes"
 then
@@ -4865,7 +4865,7 @@ fi
 # As-needed linking
 if uname | grep Linux >config.tmp
 then
-  MYLDFLAGS="$MYLDFLAGS -Wl,-rpath-link,.:$MYLDLIBPATH"
+  MYLDFLAGS="$MYLDFLAGS -Wl,-rpath-link,.:/usr/local/lib:$MYLDLIBPATH"
   MYLDFLAGS="$MYLDFLAGS -Wl,--as-needed"
 else
   MYCMDLIBS="$MYCMDLIBS $LIBS"
