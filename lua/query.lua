@@ -5383,7 +5383,7 @@ function db_index_iterate_del (idxspec, mval, keyattr, outfn, db, env, cmd, kwen
 			if not key then break end
 			ans = procLimit (kwenv, cmd, key, env)
 			if kwenv._procbreak then break end
-			cur:remove ()
+			cur:remove ()		-- XXX hack
 			local rc2, ans2 = op_dbdel (outfn, db, key, idxspec.db)
 			ans = ans and ans2
 		end
