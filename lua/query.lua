@@ -794,7 +794,7 @@ function basename (path)
 end
 
 ------------------------------------------------------------
---DOC:=KyotoTycoon拡張=
+--DOC:=KyotoTycoon Query=
 --DOC:
 --DOC:==DB記述ファイル
 --DOC:プライマリDBと同じディレクトリのconfig.mlという名前のファイルに記述する。
@@ -4113,6 +4113,7 @@ function cexpr_conproc (cmd, env)
 										{["var"] = true;
 										 ["e-var"] = true;
 										 ["break-if"] = false;
+										 ["on-break"] = true;
 										 ["break-if-limit"] = true;
 										 ["true"] = true;
 										 ["false"] = true;
@@ -4130,6 +4131,10 @@ function cexpr_conproc (cmd, env)
 	end
 	local breakif = kwenv["break-if"]
 
+	local onbreak
+	if consumerfnp (kwenv["on-break"]) then
+		onbreak = kwenv["on-break"]
+	end
 	local localvars = {}
 	if kwenv.var or kwenv["e-var"] then
 		local dvar = kwenv.var
@@ -4194,11 +4199,21 @@ function cexpr_conproc (cmd, env)
 												for i, v in ipairs (procs) do
 													if breakif and checkBool (evalFunc (breakif, env)) then
 														if DEBUG then debugLog ("break") end
+														if onbreak then
+															if DEBUG then debugLog ("on-break") end
+															onbreak:next (key, val)
+														end
 														break
 													end
 													rc = v:next (key, val)
 													if DEBUG then debugProcVal (rc) end
-													if kwenv["break-if-limit"] and not rc then break end
+													if kwenv["break-if-limit"] and not rc then
+														if onbreak then
+															if DEBUG then debugLog ("on-break") end
+															onbreak:next (key, val)
+														end
+														break
+													end
 												end
 												if DEBUG then debugLog ("conproc end", -1) end
 												return not kwenv["break-if-limit"] or rc
@@ -4213,14 +4228,23 @@ function cexpr_conproc (cmd, env)
 								if DEBUG then debugLog ("conproc begin", 1) end
 								local rc = true
 								for i, v in ipairs (procs) do
---									if DEBUG then print ("==> conproc...") end
 									if breakif and checkBool (evalFunc (breakif, env)) then
 										if DEBUG then debugLog ("break") end
+										if onbreak then
+											if DEBUG then debugLog ("on-break") end
+											onbreak:next (key, val)
+										end
 										break
 									end
 									rc = v:next (key, val)
 									if DEBUG then debugProcVal (rc) end
-									if kwenv["break-if-limit"] and not rc then break end
+									if kwenv["break-if-limit"] and not rc then
+										if onbreak then
+											if DEBUG then debugLog ("on-break") end
+											onbreak:next (key, val)
+										end
+										break
+									end
 								end
 								if DEBUG then debugLog ("conproc end", -1) end
 								return not kwenv["break-if-limit"] or rc
@@ -4737,7 +4761,7 @@ optable = {
 		["popmsg"] = cexpr_popmsg;
 --DOC:| coneval | ('''coneval''' ''EXPR''...) -> ''PROCESSOR'' |''EXPR''を実行するconcurrentファンクションを出力する。|
 		["coneval"] = cexpr_coneval;
---DOC:| conproc | ('''conproc''' ''':var''' ''SYMBOL_or_SYMBOL_LIST'' ''':e-var''' ''SYMBOL_or_SYMBOL_LIST'' ''':break-if''' ''EXPR_BOOL'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR''...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
+--DOC:| conproc | ('''conproc''' ''':var''' ''SYMBOL_or_SYMBOL_LIST'' ''':e-var''' ''SYMBOL_or_SYMBOL_LIST'' ''':break-if''' ''EXPR_BOOL'' ''':on-break''' ''PROCESSOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR''...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
 		["conproc"] = cexpr_conproc;
 --DOC:| local-var | ('''local-var''' ''SYMBOL''...) -> ''PROCESSOR'' | ローカル変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
 		["local-var"] = cexpr_local_var;
