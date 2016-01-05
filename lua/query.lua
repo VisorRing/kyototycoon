@@ -4196,23 +4196,31 @@ function cexpr_conproc (cmd, env)
 								return pushEnv (localenv, env,
 											function (env)
 												local rc = true
-												for i, v in ipairs (procs) do
-													if breakif and checkBool (evalFunc (breakif, env)) then
-														if DEBUG then debugLog ("break") end
-														if onbreak then
-															if DEBUG then debugLog ("on-break") end
-															onbreak:next (key, val)
-														end
-														break
+												if breakif and checkBool (evalFunc (breakif, env)) then
+													if DEBUG then debugLog ("break") end
+													if onbreak then
+														if DEBUG then debugLog ("on-break") end
+														onbreak:next (key, val)
 													end
-													rc = v:next (key, val)
-													if DEBUG then debugProcVal (rc) end
-													if kwenv["break-if-limit"] and not rc then
-														if onbreak then
-															if DEBUG then debugLog ("on-break") end
-															onbreak:next (key, val)
+												else
+													for i, v in ipairs (procs) do
+														rc = v:next (key, val)
+														if DEBUG then debugProcVal (rc) end
+														if breakif and checkBool (evalFunc (breakif, env)) then
+															if DEBUG then debugLog ("break") end
+															if onbreak then
+																if DEBUG then debugLog ("on-break") end
+																onbreak:next (key, val)
+															end
+															break
 														end
-														break
+														if kwenv["break-if-limit"] and not rc then
+															if onbreak then
+																if DEBUG then debugLog ("on-break") end
+																onbreak:next (key, val)
+															end
+															break
+														end
 													end
 												end
 												if DEBUG then debugLog ("conproc end", -1) end
@@ -4227,23 +4235,31 @@ function cexpr_conproc (cmd, env)
 							function (key, val)
 								if DEBUG then debugLog ("conproc begin", 1) end
 								local rc = true
-								for i, v in ipairs (procs) do
-									if breakif and checkBool (evalFunc (breakif, env)) then
-										if DEBUG then debugLog ("break") end
-										if onbreak then
-											if DEBUG then debugLog ("on-break") end
-											onbreak:next (key, val)
-										end
-										break
+								if breakif and checkBool (evalFunc (breakif, env)) then
+									if DEBUG then debugLog ("break") end
+									if onbreak then
+										if DEBUG then debugLog ("on-break") end
+										onbreak:next (key, val)
 									end
-									rc = v:next (key, val)
-									if DEBUG then debugProcVal (rc) end
-									if kwenv["break-if-limit"] and not rc then
-										if onbreak then
-											if DEBUG then debugLog ("on-break") end
-											onbreak:next (key, val)
+								else
+									for i, v in ipairs (procs) do
+										rc = v:next (key, val)
+										if DEBUG then debugProcVal (rc) end
+										if breakif and checkBool (evalFunc (breakif, env)) then
+											if DEBUG then debugLog ("break") end
+											if onbreak then
+												if DEBUG then debugLog ("on-break") end
+												onbreak:next (key, val)
+											end
+											break
 										end
-										break
+										if kwenv["break-if-limit"] and not rc then
+											if onbreak then
+												if DEBUG then debugLog ("on-break") end
+												onbreak:next (key, val)
+											end
+											break
+										end
 									end
 								end
 								if DEBUG then debugLog ("conproc end", -1) end
