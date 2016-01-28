@@ -4151,6 +4151,8 @@ function cexpr_conproc (cmd, env)
 					return nil
 				end
 			end
+		elseif vectorp (dvar) then
+			writeFnError (env, cmd, dvar, paramError)
 		else
 			local c = t_to_string (dvar)
 			if c ~= "" and string.find (c, ".", 1, true) == nil then
@@ -4174,6 +4176,8 @@ function cexpr_conproc (cmd, env)
 					return nil
 				end
 			end
+		elseif vectorp (dvar) then
+			writeFnError (env, cmd, dvar, paramError)
 		else
 			local c = t_to_string (dvar)
 			if c ~= "" and not string.find (c, ".", 1, true) then
