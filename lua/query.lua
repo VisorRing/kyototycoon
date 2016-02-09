@@ -29,9 +29,9 @@ local kBoolean = 9			-- 9: boolean
 local kVector = 16			-- 16: vector
 local kTable = 17				-- 17: table
 local kConsumerFn = 20		-- 20: function chain
-local mType = "-~-\1"			-- Map, Vectorタイプのtableに入れる。
 local kEVarPrefixCh = "-"		-- E変数のプレフィックス
-local kEVarPrefix = "-\1"		-- E変数のプレフィックス
+local mType = "-~-\1"			-- Map, Vectorタイプのtableに入れる。
+local kEVarPrefix = "-*-\1"		-- E変数のプレフィックス
 local prognOutmap = "output"
 local prognError = "ERROR"
 --local superEnv = "__super__"
@@ -330,6 +330,7 @@ function tdump (t)
 	end
 end
 
+-- DEBUG
 function envdump (e)
 	local ans = "{"
 	local n = 0
@@ -349,6 +350,7 @@ function envdump (e)
 	return ans .. "}"
 end
 
+-- DEBUG
 function tabledump (t)
 	if type (t) == "table" then
 		local ans = "{"
@@ -372,6 +374,7 @@ function tabledump (t)
 	end
 end
 
+-- ERROR Message
 function arraydump (t)
 	if type (t) == "table" then
 		local ans = "["
@@ -547,7 +550,8 @@ function texpdump (e)	-- => STRING
 			local ans = "{"
 			local c = 0
 			for k, v in pairs (e) do
-				if k ~= mType then
+--				if k ~= mType and k ~= kEVarPrefix then
+				if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 					if c > 0 then
 						ans = ans .. " "
 					end
@@ -648,18 +652,6 @@ function t_to_array (e)
 	return ans
 end
 
-function t_to_table (e)
-	local ans = {}
-	if tablep (e) then
-		for k, v in pairs (e) do
-			if k ~= mType then
-				ans[k] = t_to_numstr (v)
-			end
-		end
-	end
-	return ans
-end
-
 function t_to_table_nilfree (e)
 	local ans = {}
 	if tablep (e) then
@@ -672,52 +664,16 @@ function t_to_table_nilfree (e)
 	return ans
 end
 
-function table_to_t (obj)		-- 要素はstringかnumberのみ
-	local ans = {[mType] = kTable}
-	for k, v in pairs (obj) do
-		ans[k] = v
-	end
-end
-
-function array_to_texp (obj)
-	local ans = "["
-	for i, v in ipairs (obj) do
-		if i > 1 then
-			ans = ans .. " "
-		end
-		ans = ans .. describe (v)
-	end
-	return ans .. "]"
-end
-
-function table_to_texp (obj)
-	local ans = "{"
-	local c = 0
-	for k, v in pairs (obj) do
-		if c > 0 then
-			ans = ans .. " "
-		end
-		ans = ans .. describe (k) .. " => " .. describe (v)
-		c = c + 1
-	end
-	return ans .. "}"
-end
-
-function set_to_vector (obj)
-	local ans = {[mType] = kVector}
-	for k, v in pairs (obj) do
-		if k ~= mType then
-			table.insert (ans, k)
-		end
-	end
-	return ans
-end
-
 function table_texp (obj)
 --	obj[mType] = nil
 --	obj[superEnv] = nil
 	for k, v in pairs (obj) do
-		obj[k] = texpdump (v)
+--		if k ~= mType then
+		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
+			obj[k] = texpdump (v)
+		else
+			obj[k] = nil		-- pairs内で削除できる
+		end
 	end
 end
 
@@ -2533,7 +2489,8 @@ function expr_table_append (cmd, env)
 		if not nullp (tbl2) then
 			if not tablep (tbl2) then writeFnError (env, cmd, tbl2, typeError) return nil end
 			for key, val in pairs (tbl2) do
-				if key ~= mType then
+--				if key ~= mType and key ~= kEVarPrefix then
+				if string.sub (key, 1, 1) ~= kEVarPrefixCh then
 					tbl[key] = val
 				end
 			end
@@ -2555,7 +2512,8 @@ function expr_table_keys (cmd, env)
 
 	local vec = {[mType] = kVector}
 	for k, v in pairs (tbl) do
-		if k ~= mType then
+--		if k ~= mType and k ~= kEVarPrefix then
+		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			table.insert (vec, k)
 		end
 	end
@@ -2577,7 +2535,8 @@ function expr_table_to_list (cmd, env)
 	local ans = {}
 	local c = ans
 	for k, v in pairs (tbl) do
-		if k ~= mType then
+--		if k ~= mType and k ~= kEVarPrefix then
+		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			c.cdr = {car = {car = k; cdr = v}}
 			c = c.cdr
 		end
@@ -2725,7 +2684,8 @@ function expr_setevar (cmd, env)
 		else
 			val = nil
 		end
-		setvar_proc (name, val, env, function (x, y, e) bindSym (kEVarPrefix .. x, y, e, true) end)
+--		setvar_proc (name, val, env, function (x, y, e) bindSym (kEVarPrefix .. x, y, e, true) end)
+		setvar_proc (name, val, env, function (x, y, e) bindSym (x, y, e, true) end)
 	end
 	return val
 end
@@ -2738,7 +2698,8 @@ function expr_getevar (cmd, env)
 	e = e.cdr
 	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
 
-	return evalSym (kEVarPrefix .. name, env, true)
+--	return evalSym (kEVarPrefix .. name, env, true)
+	return evalSym (name, env, true)
 end
 
 function expr_progn (cmd, env)
@@ -2863,7 +2824,8 @@ function expr_table_each (cmd, env)
 	pushEnv (localEnv, env, function (env)
 								if DEBUG then debugLog ("table-each begin", 1) end
 								for k, v in pairs (tbl) do
-									if k ~= mType then
+--									if k ~= mType and k ~= kEVarPrefix then
+									if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 										if varkey ~= "" then localEnv[varkey] = k end
 										if varval ~= "" then localEnv[varval] = safenil (v) end
 										if DEBUG then debugLog (nil, -1) debugLog ("table-each [" .. tostring (varkey) .. " := " .. texpdump (k) .. "; " .. tostring (varval) .. " := " .. texpdump (v) .. "]", 1) end
@@ -3179,7 +3141,8 @@ function cexpr_e_store (cmd, env)
 							if kwenv._procbreak then
 							else
 								local vkey = t_to_string (evalExpr (var, env))
-								bindSym (kEVarPrefix .. vkey, safenil (evalVTF (vval, env)), env, true)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
+--								bindSym (kEVarPrefix .. vkey, safenil (evalVTF (vval, env)), env, true)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
+								bindSym (vkey, safenil (evalVTF (vval, env)), env, true)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
 							end
 							if DEBUG then debugLog (nil, -1) end
 							return procVal (rc, kwenv)
@@ -3226,7 +3189,8 @@ function cexpr_e_undef (cmd, env)
 							local p = params
 							while consp (p) do
 								local key = t_to_string (evalExpr (p.car, env))
-								bindSym (kEVarPrefix .. key, nil, env)		-- nilは要素を削除
+--								bindSym (kEVarPrefix .. key, nil, env)		-- nilは要素を削除
+								bindSym (key, nil, env, true)		-- nilは要素を削除
 								p = p.cdr
 							end
 							if DEBUG then debugLog (nil, -1) end
@@ -3585,13 +3549,13 @@ function cexpr_key_get (cmd, env)
 	return cexpr_key_get_op (op_key_get, cmd, env)
 end
 
-function cexpr_key_iterate_op (op, cmd, env)
-	-- (op DB [:start EXPR_START] [:store VAR] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
-	local db
+function cexpr_key_iterate (cmd, env)
+	-- (op DB [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+	local op, db
 	local params, kwenv
 	kwenv = {store = "_"}
 	params, kwenv = readParams (cmd, env,
-										{store = true;
+										{desc = true;
 										 proc = true;
 										 start = false;
 										 once = true;
@@ -3610,6 +3574,7 @@ function cexpr_key_iterate_op (op, cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
+	if kwenv.desc then op = op_key_iterate_desc else op = op_key_iterate end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3623,23 +3588,68 @@ function cexpr_key_iterate_op (op, cmd, env)
 						end)
 end
 
-function cexpr_key_iterate (cmd, env)
-	-- (key-itearte DB [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false])
-	return cexpr_key_iterate_op (op_key_iterate, cmd, env)
-end
-
-function cexpr_key_iterate_desc (cmd, env)
-	-- (index-desc DB [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false])
-	return cexpr_key_iterate_op (op_key_iterate_desc, cmd, env)
-end
-
-function cexpr_index_iterate_op (op_idx, cmd, env)
-	-- (index-iterate DB ATTR EXPR_VALUE [:start EXPR_START] [:store VAR] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+function cexpr_index_get (cmd, env)
+	-- (index-get DB ATTR EXPR_VALUE [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
 	local db, attr, attrval
 	local params, kwenv
 	kwenv = {store = "_"}
 	params, kwenv = readParams (cmd, env,
-										{store = true;
+										{proc = true;
+										 start = false;
+										 ["true"] = true;
+										 ["false"] = true;
+										},
+									kwenv)
+
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	db = evalExpr_db (params.car, env, cmd)
+	params = params.cdr
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	attr = evalExpr (params.car, env)
+	params = params.cdr
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	attrval = params.car
+	params = params.cdr
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+
+	if not db then return nil end
+	if stringp (attr) then
+		attr = {attr; [mType] = kVector}
+	elseif vectorp (attr) then
+		-- string vectorにする
+		local a = {[mType] = kVector}
+		for i, v in ipairs (attr) do
+			table.insert (a, t_to_string (v))
+		end
+		attr = a
+	else
+		writeFnError (env, cmd, attr, typeError)
+	end
+	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+
+	return ConsumerStarter.new (
+						"[" .. tostring (dbname[db]) .. "]."..t_to_string (cmd.car),
+						kwenv,
+						function (key, val)
+							local vval = evalVTF (attrval, env)
+							if not vectorp (vval) then
+								vval = {vval; [mType] = kVector}
+							end
+							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", val=" .. texpdump (vval), 1) end
+							local st, rc = op_index_get (kwenv.proc, db, attr, vval, vstart, cmd, env, kwenv)
+							if DEBUG then debugProcVal (rc, -1) end
+							return rc
+						end)
+end
+
+function cexpr_index_iterate_op (op_asc, op_desc, cmd, env)
+	-- (index-iterate DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+	local op, db, attr, attrval
+	local params, kwenv
+	kwenv = {store = "_"}
+	params, kwenv = readParams (cmd, env,
+										{desc = true;
 										 proc = true;
 										 start = false;
 										 once = true;
@@ -3676,6 +3686,7 @@ function cexpr_index_iterate_op (op_idx, cmd, env)
 	end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
+	if kwenv.desc then op = op_desc else op = op_asc end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]."..t_to_string (cmd.car),
@@ -3687,28 +3698,24 @@ function cexpr_index_iterate_op (op_idx, cmd, env)
 							end
 							local vstart = to_string_opt (evalFunc (kwenv.start, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", val=" .. texpdump (vval), 1) end
-							local st, rc = op_idx (kwenv.proc, db, attr, vval, vstart, cmd, env, kwenv)
+							local st, rc = op (kwenv.proc, db, attr, vval, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rc, -1) end
 							return rc
 						end)
 end
 
 function cexpr_index_iterate (cmd, env)
-	-- (index-iterate DB ATTR EXPR_VALUE [:start EXPR_START] [:store VAR] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
-	return cexpr_index_iterate_op (op_index_iterate, cmd, env)
+	-- (index-iterate DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+	return cexpr_index_iterate_op (op_index_iterate, op_index_iterate_desc, cmd, env)
 end
 
-function cexpr_index_iterate_desc (cmd, env)
-	return cexpr_index_iterate_op (op_index_iterate_desc, cmd, env)
-end
-
-function cexpr_key_prefix_op (op, cmd, env)
-	-- (op DB PREFIX_VAL [:start EXPR_START] [:store VAR] [#once] [:proc PROCESSOR] [#true | #false])
-	local db, val
+function cexpr_key_prefix_op (op_asc, op_desc, cmd, env)
+	-- (op DB PREFIX_VAL [#desc] [:start EXPR_START] [#once] [:proc PROCESSOR] [#true | #false])
+	local op, db, val
 	local params, kwenv
 	kwenv = {store = "_"}
 	params, kwenv = readParams (cmd, env,
-										{store = true;
+										{desc = true;
 										 proc = true;
 										 start = false;
 										 once = true;
@@ -3730,6 +3737,7 @@ function cexpr_key_prefix_op (op, cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
+	if kwenv.desc then op = op_desc else op = op_asc end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3745,30 +3753,22 @@ function cexpr_key_prefix_op (op, cmd, env)
 end
 
 function cexpr_key_prefix (cmd, env)
-	-- (key-prefix DB ATTR EXPR_VALUE [:start EXPR_START] [:store VAR] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
-	return cexpr_key_prefix_op (op_key_prefix, cmd, env)
-end
-
-function cexpr_key_prefix_desc (cmd, env)
-	return cexpr_key_prefix_op (op_key_prefix_desc, cmd, env)
+	-- (key-prefix DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+	return cexpr_key_prefix_op (op_key_prefix, op_key_prefix_desc, cmd, env)
 end
 
 function cexpr_index_prefix (cmd, env)
-	-- (index-prefix DB ATTR EXPR_VALUE [:start EXPR_START] [:store VAR] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
-	return cexpr_index_iterate_op (op_index_prefix, cmd, env)
+	-- (index-prefix DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
+	return cexpr_index_iterate_op (op_index_prefix, op_index_prefix_desc, cmd, env)
 end
 
-function cexpr_index_prefix_desc (cmd, env)
-	return cexpr_index_iterate_op (op_index_prefix_desc, cmd, env)
-end
-
-function cexpr_key_range_op (op_key, cmd, env)
+function cexpr_key_range_op (op_asc, op_desc, cmd, env)
 	-- (op DB EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
-	local db, vala, valb
+	local op, db, vala, valb
 	local params, kwenv
 	kwenv = {store = "_"}
 	params, kwenv = readParams (cmd, env,
-										{store = true;
+										{desc = true;
 										 proc = true;
 										 start = false;
 										 once = true;
@@ -3793,6 +3793,7 @@ function cexpr_key_range_op (op_key, cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
+	if kwenv.desc then op = op_desc else op = op_asc end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3803,29 +3804,24 @@ function cexpr_key_range_op (op_key, cmd, env)
 							local vstart = to_string_opt (evalFunc (kwenv.start, env))
 							if vstart then vvala = vstart end
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": vala=" .. texpdump (vvala) .. ", valb=" .. texpdump (vvalb), 1) end
-							local rc, rf = op_key (kwenv.proc, db, vvala, vvalb, cmd, env, kwenv)
+							local rc, rf = op (kwenv.proc, db, vvala, vvalb, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rf, -1) end
 							return rf
 						end)
 end
 
 function cexpr_key_range (cmd, env)
-	-- (key-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
-	return cexpr_key_range_op (op_key_range, cmd, env)
+	-- (key-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
+	return cexpr_key_range_op (op_key_range, op_key_range_desc, cmd, env)
 end
 
-function cexpr_key_range_desc (cmd, env)
-	-- (key-range-desc DB ATTR EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
-	return cexpr_key_range_op (op_key_range_desc, cmd, env)
-end
-
-function cexpr_index_range_op (op_index, cmd, env)
-	-- (op DB ATTR EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false])
-	local db, attr, vala, valb
+function cexpr_index_range_op (op_asc, op_desc, cmd, env)
+	-- (op DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
+	local op, db, attr, vala, valb
 	local params, kwenv
 	kwenv = {store = "_"}
 	params, kwenv = readParams (cmd, env,
-										{store = true;
+										{desc = true;
 										 proc = true;
 										 start = false;
 										 once = true;
@@ -3864,6 +3860,7 @@ function cexpr_index_range_op (op_index, cmd, env)
 	end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
+	if kwenv.desc then op = op_desc else op = op_asc end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3879,20 +3876,15 @@ function cexpr_index_range_op (op_index, cmd, env)
 							end
 							local vstart = to_string_opt (evalFunc (kwenv.start, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", vala=" .. texpdump (vvala) .. ", valb=" .. texpdump (vvalb), 1) end
-							local rc, rf = op_index (kwenv.proc, db, attr, vvala, vvalb, vstart, cmd, env, kwenv)
+							local rc, rf = op (kwenv.proc, db, attr, vvala, vvalb, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rf, -1) end
 							return rf
 						end)
 end
 
 function cexpr_index_range (cmd, env)
-	-- (index-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false])
-	return cexpr_index_range_op (op_index_range, cmd, env)
-end
-
-function cexpr_index_range_desc (cmd, env)
-	-- (index-range-desc DB ATTR EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false])
-	return cexpr_index_range_op (op_index_range_desc, cmd, env)
+	-- (index-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
+	return cexpr_index_range_op (op_index_range, op_index_range_desc, cmd, env)
 end
 
 function cexpr_newserial_op (op, cmd, env)
@@ -4435,7 +4427,8 @@ function cexpr_conproc_table_each (cmd, env)
 												local tbl2 = evalExpr (tbl, env)
 												if nullp (tbl2) or not tablep (tbl2) then return rc end
 												for k, v in pairs (tbl2) do
-													if k ~= mType then
+--													if k ~= mType and k ~= kEVarPrefix then
+													if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 														if varkey ~= "" then
 															localEnv[varkey] = k
 														end
@@ -4746,25 +4739,21 @@ optable = {
 		["pickoff"] = cexpr_pickoff;
 --DOC:| key-get | ('''key-get''' ''DB'' ''EXPR_KEY'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |レコードを取り出す。onceオプションを指定すると、concurrentファンクションとして１度だけ実行される。|
 		["key-get"] = cexpr_key_get;
---DOC:| key-iterate<br>key-iterate-desc | ('''key-iterate''' ''DB'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |レコード一覧の取得。|
+--DOC:| key-iterate | ('''key-iterate''' ''DB'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |レコード一覧の取得。|
 		["key-iterate"] = cexpr_key_iterate;
-		["key-iterate-desc"] = cexpr_key_iterate_desc;
---DOC:| index-iterate<br>index-iterate-desc | ('''index-iterate''' ''DB'' ''ATTR'' ''EXPR_VALUE'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |インデックス検索。属性''ATTR''は、属性名。インデックステーブルを選択する。''EXPR_VALUE''は、属性の値。''EXPR_VALUE''、''EXPR_KEY''はDBのアクセス時に評価される。#onceオプションをつけると、最初のマッチのみ実行する。|
---DOC:|^| ('''index-iterate''' ''DB'' '''['''''ATTR''...''']''' '''['''''EXPR_VALUE''...''']''' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |複合インデックス検索。''ATTR_VECTOR''は、属性名のベクタ。''EXPR_VALUE_VECTOR''は属性値のベクタ。属性名のベクタより短いベクタを指定して検索できる。|
+--DOC:| index-get | ('''index-get''' ''DB'' ''ATTR'' ''EXPR_VALUE'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#true''' '''#false''') -> ''PROCESSOR'' |インデックス検索。属性''ATTR''は、属性名。インデックステーブルを選択する。''EXPR_VALUE''は、属性の値。''EXPR_VALUE''、''EXPR_KEY''はDBのアクセス時に評価される。最初のマッチのみ実行する。|
+		["index-get"] = cexpr_index_get;
+--DOC:| index-iterate | ('''index-iterate''' ''DB'' ''ATTR'' ''EXPR_VALUE'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |インデックス検索。属性''ATTR''は、属性名。インデックステーブルを選択する。''EXPR_VALUE''は、属性の値。''EXPR_VALUE''、''EXPR_KEY''はDBのアクセス時に評価される。#onceオプションをつけると、最初のマッチのみ実行する。|
+--DOC:|^| ('''index-iterate''' ''DB'' '''['''''ATTR''...''']''' '''['''''EXPR_VALUE''...''']''' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |複合インデックス検索。''ATTR_VECTOR''は、属性名のベクタ。''EXPR_VALUE_VECTOR''は属性値のベクタ。属性名のベクタより短いベクタを指定して検索できる。|
 		["index-iterate"] = cexpr_index_iterate;
-		["index-iterate-desc"] = cexpr_index_iterate_desc;
---DOC:| key-prefix<br>key-prefix-desc | ('''key-prefix''' ''DB'' ''ATTR'' ''EXPR_VALUE'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |キー検索。属性''ATTR''は、DBのキー、または、インデックステーブルを指定した属性名。|
+--DOC:| key-prefix | ('''key-prefix''' ''DB'' ''ATTR'' ''EXPR_VALUE'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |キー検索。属性''ATTR''は、DBのキー、または、インデックステーブルを指定した属性名。|
 		["key-prefix"] = cexpr_key_prefix;
-		["key-prefix-desc"] = cexpr_key_prefix_desc;
---DOC:| index-prefix<br>index-prefix-desc | ('''index-prefix''' ''DB'' ''ATTR'' ''EXPR_VALUE'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |インデックス検索。属性''ATTR''は、DBのキー、または、インデックステーブルを指定した属性名。|
+--DOC:| index-prefix | ('''index-prefix''' ''DB'' ''ATTR'' ''EXPR_VALUE'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |インデックス検索。属性''ATTR''は、DBのキー、または、インデックステーブルを指定した属性名。|
 		["index-prefix"] = cexpr_index_prefix;
-		["index-prefix-desc"] = cexpr_index_prefix_desc;
---DOC:| key-range<br>key-range-desc | ('''key-range''' ''DB'' ''EXPR_VALUE_A'' ''EXPR_VALUE_B'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |キーの値が''VALUE_A''から''VALUE_B''の範囲内にあるレコードを抽出する。|
+--DOC:| key-range | ('''key-range''' ''DB'' ''EXPR_VALUE_A'' ''EXPR_VALUE_B'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |キーの値が''VALUE_A''から''VALUE_B''の範囲内にあるレコードを抽出する。|
 		["key-range"] = cexpr_key_range;
-		["key-range-desc"] = cexpr_key_range_desc;
---DOC:| index-range<br>index-range-desc | ('''index-range''' ''DB'' ''ATTR'' ''EXPR_VALUE_A'' ''EXPR_VALUE_B'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |属性''ATTR''の値が''VALUE_A''から''VALUE_B''の範囲内にあるレコードを抽出する。|
+--DOC:| index-range | ('''index-range''' ''DB'' ''ATTR'' ''EXPR_VALUE_A'' ''EXPR_VALUE_B'' '''#desc''' ''':proc''' ''PROCESSOR'' ''':start''' ''EXPR_KEY'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |属性''ATTR''の値が''VALUE_A''から''VALUE_B''の範囲内にあるレコードを抽出する。|
 		["index-range"] = cexpr_index_range;
-		["index-range-desc"] = cexpr_index_range_desc;
 --DOC:| new-serial | ('''new-serial''' ''EXPR_KEY'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' '''#true''' '''#false''') -> ''PROCESSOR'' |単純増加するシリアル番号を発行する。|
 		["new-serial"] = cexpr_new_serial;
 --DOC:| last-serial | ('''last-serial''' ''EXPR_KEY'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' '''#true''' '''#false''') -> ''PROCESSOR'' |new-serialで最後に発行したシリアル番号を読み出す。|
@@ -4817,12 +4806,14 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 	local i = #env
 	local p, w, v, q
 	v = table.remove (a, 1)
-	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+--	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+	if string.sub (v, 1, 1) == kEVarPrefixCh then
 		writeFnError (env, nil, v, "bad name")
 		return nil
 	end
 	w = tonumber (v)
 	if w then v = w + 1 end					-- 0始まり
+	if eflag and #a == 0 then v = kEVarPrefix .. v end
 	while i >= 1 do
 		q = env[i][v]
 		if q then
@@ -4832,7 +4823,8 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 		i = i - 1
 	end
 	for i, v in ipairs (a) do
-		if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+--		if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+		if string.sub (v, 1, 1) == kEVarPrefixCh then
 			writeFnError (env, nil, v, "bad name")
 			return nil
 		end
@@ -4840,6 +4832,7 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 			local w = tonumber (v)
 			if w then v = w + 1 end			-- 0始まり
 			if type (p) == "table" then
+				if eflag and i == #a then v = kEVarPrefix .. v end
 				p = p[v]
 			else
 				writeFnError (env, nil, e, "bad type. " .. stringJoinSub (kt.split (e, "."), ".", 1, i) .. "=" .. tdump (p))
@@ -4876,12 +4869,14 @@ function refTSym (name, env, eflag)
 	local a = kt.split (name, ".")
 	local i = #env
 	local v = table.remove (a, 1)
-	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+--	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+	if string.sub (v, 1, 1) == kEVarPrefixCh then
 		writeFnError (env, name, v, "bad name")
 		return nil
 	end
 	local w = tonumber (v)
 	if w then v = w + 1 end			-- 0始まり
+    if eflag and #a == 0 then v = kEVarPrefix .. v end
 	local e
 	while i >= 1 do
 		e = env[i]
@@ -4894,13 +4889,15 @@ function refTSym (name, env, eflag)
 		return e, v
 	else
 		local k = table.remove (a, #a)
-		if not eflag and string.sub (k, 1, 1) == kEVarPrefixCh then
+--		if not eflag and string.sub (k, 1, 1) == kEVarPrefixCh then
+		if string.sub (k, 1, 1) == kEVarPrefixCh then
 			writeFnError (env, name, k, "bad name")
 			return nil
 		end
 		if k == "" then return nil end
 		w = tonumber (k)
 		if w then k = w + 1 end		-- 0始まり
+		if eflag then k = kEVarPrefix .. k end
 		if not e[v] then
 			e[v] = {}
 			e = e[v]
@@ -4912,7 +4909,8 @@ function refTSym (name, env, eflag)
 			end
 		end
 		for i, v in ipairs (a) do
-			if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+--			if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
+			if string.sub (v, 1, 1) == kEVarPrefixCh then
 				writeFnError (env, name, v, "bad name")
 				return nil
 			end
@@ -4937,7 +4935,11 @@ function bindSym (name, val, env, eflag)
 	local t, k = refTSym (name, env, eflag)
 	if t and k then
 		t[k] = val
-		if DEBUG then debugLog ("[" .. name .. " := " .. texpdump_short (val) .. "]") end
+		if eflag then
+			if DEBUG then debugLog ("[" .. name .. "/" .. k .. " := " .. texpdump_short (val) .. "]") end
+		else
+			if DEBUG then debugLog ("[" .. name .. " := " .. texpdump_short (val) .. "]") end
+		end
 	end
 end
 
@@ -4966,7 +4968,8 @@ end
 function evalTable (e, env)
 	local ans = {[mType] = kTable}
 	for k, v in pairs (e) do
-		if k ~= mType then
+--		if k ~= mType and k ~= kEVarPrefix then
+		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			if consp (v) then
 				-- リテラル内の関数の実行は安全でない
 				ans[k] = safenil (v)
@@ -4982,7 +4985,8 @@ end
 function dupTable (e)
 	local ans = {[mType] = kTable}
 	for k, v in pairs (e) do
-		if k ~= mType then
+--		if k ~= mType and k ~= kEVarPrefix then
+		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			ans[k] = v
 		end
 	end
@@ -5340,6 +5344,36 @@ function index_key (attrspecs, mval)
 		end
 	end
 	return ans, type	-- ansはNUL終端
+end
+
+-- 属性値のリストをインデックス値とするレコードのキーをインデックステーブルから読み込む
+function db_index_get (idxspec, mval, outfn, startkey, kwenv, env, cmd)
+	local ans = true
+	local rf2
+	if not vectorp (mval) then kt.log ("error", "internal error in db_index_iterate.") return nil end	-- error
+	if #mval == 0 then return ans end
+	if #idxspec.attrspecs < #mval then writeFnError (env, cmd, nil, nIndexError) return ans end	-- 値ベクトルが少なくてもインデックス検索できる。startオプションは使えない
+	local valz = index_key (idxspec.attrspecs, mval)
+	if not valz then return ans end
+	-- valzはNUL終端
+	local cur = idxspec.db:cursor ()
+	local rc
+	if startkey then
+		rc = cur:jump (valz .. startkey)
+	else
+		rc = cur:jump (valz)
+	end
+	if rc then
+		local nvalz = string.len (valz)
+		while string.sub (cur:get_key (), 1, nvalz) == valz do
+			local key = cur:get_value ()
+			if not key then break end
+			rf2 = outfn (key)
+			break
+		end
+	end
+	cur:disable ()
+	return ans
 end
 
 -- 属性値のリストをインデックス値とするレコードのキーをインデックステーブルから読み込む
@@ -6074,6 +6108,11 @@ function op_index_iterate_op (op, outfn, db, attr, val, startkey, cmd, env, kwen
 	return kt.RVSUCCESS, rf
 end
 
+function op_index_get (outfn, db, attr, val, startkey, cmd, env, kwenv)
+	-- outmap: [TABLE ...]: Vector, 
+	return op_index_iterate_op (db_index_get, outfn, db, attr, val, startkey, cmd, env, kwenv)
+end
+
 function op_index_iterate (outfn, db, attr, val, startkey, cmd, env, kwenv)
 	-- outmap: [TABLE ...]: Vector, "next" => NEXT_KEY: String
 	return op_index_iterate_op (db_index_iterate, outfn, db, attr, val, startkey, cmd, env, kwenv)
@@ -6353,7 +6392,8 @@ function op_restore_serial_table (tbl)
 		return kt.RVEINVALID
 	end
 	for key, val in pairs (tbl) do
-		if key == mType then
+--		if key == mType or key == kEVarPrefix then
+		if string.sub (key, 1, 1) == kEVarPrefixCh then
 		elseif nullp (val) then
 			serialdb:remove (key)
 		else
@@ -6587,8 +6627,7 @@ function progn (inmap, outmap)
 		return kt.RVSUCCESS
 	end
 	if nullp (env) then
-		env = {}
---		env = {[mType] = kTable}
+		env = {}	-- [mType] = kTable は、含めない
 	elseif not tablep (env) then
 		kt.log ("error", "error in the env parameter")
 		return kt.RVEINVALID
@@ -6600,7 +6639,6 @@ function progn (inmap, outmap)
 	end
 	env[prognOutmap] = outmap
 	outmap[mType] = kVector
---	if DEBUG then print ("progn env:" .. envdump (env) .. ", eval:" .. texpdump_short (expr)) end
 	if DEBUG then print ("progn env:" .. envdump (env) .. ", eval:" .. texpdump (expr)) end
 	--
 	local rc
