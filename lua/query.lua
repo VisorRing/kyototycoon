@@ -33,8 +33,8 @@ local kEVarPrefixCh = "-"		-- E変数のプレフィックス
 local mType = "-~-\1"			-- Map, Vectorタイプのtableに入れる。
 local kEVarPrefix = "-*-\1"		-- E変数のプレフィックス
 local prognOutmap = "output"
+local prognOutmapTable = "output-table"
 local prognError = "ERROR"
---local superEnv = "__super__"
 local parentEnv = "_parent"
 local nParamError = "wrong number of parameters"
 local paramError = "bad parameter"
@@ -44,7 +44,7 @@ local noDBError = "database not found"
 local fnError = "bad function"
 local indexError = "no index"
 local nIndexError = "too many number of the index values"
-local KTOutput, ConsumerPushEnv, ConsumerStarter
+local ConsumerPushEnv, ConsumerStarter
 -- TExp ----------------------------------------------
 function texp (text)
 	local texp_1, texp_2, texp_3, texp_5, texp_6
@@ -664,15 +664,19 @@ function t_to_table_nilfree (e)
 	return ans
 end
 
-function table_texp (obj)
---	obj[mType] = nil
---	obj[superEnv] = nil
-	for k, v in pairs (obj) do
---		if k ~= mType then
-		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
-			obj[k] = texpdump (v)
-		else
-			obj[k] = nil		-- pairs内で削除できる
+function output_texp (obj, vec, tbl)
+	if vectorp (vec) then
+		for i, v in ipairs (vec) do
+			obj[i] = texpdump (v)
+			vec[i] = nil				-- pairs内で更新できる
+		end
+	end
+	if tablep (tbl) then
+		for k, v in pairs (tbl) do
+			if string.sub (k, 1, 1) ~= kEVarPrefixCh then
+				obj[k] = texpdump (v)
+			end
+			tbl[k] = nil
 		end
 	end
 end
@@ -2946,7 +2950,7 @@ function cexpr_output (cmd, env)
 										e[name] = storemap
 									elseif not vectorp (storemap) then
 										writeFnError (env, cmd, storemap, "not vector.")
-										if DEBUG then debugLevel (nil, -1) end
+										if DEBUG then debugLog (nil, -1) end
 										return procVal (rc, kwenv)
 									end
 									table.insert (storemap, safenil (evalVTF (sel, env)))	-- ベクタの要素数をずらさない
@@ -2961,7 +2965,7 @@ end
 function cexpr_output_table (cmd, env)
 	-- (output-table EXPR_VAR EXPR_VALUE :store VAR #once :limit INTEGER] :next VAR #true #false)
 	local params, kwenv
-	kwenv = {store = prognOutmap}
+	kwenv = {store = prognOutmapTable}
 	params, kwenv = readParams (cmd, env,
 										{store = true;
 										 once = true;
@@ -3201,7 +3205,6 @@ end
 function cexpr_select (cmd, env)
 	-- (select [EXPR_CONDITION] :proc PROCESSOR :false-proc PROCESSOR #once :limit INT :next VAR :offset INT #true #false)
 	local cond, params, kwenv
-	kwenv = {next = prognOutmap .. ".next"}
 	params, kwenv = readParams (cmd, env,
 										{proc = true;
 										 ["false-proc"] = true;
@@ -6637,8 +6640,8 @@ function progn (inmap, outmap)
 	if inmap.debug then
 		DEBUG = 1
 	end
-	env[prognOutmap] = outmap
-	outmap[mType] = kVector
+	env[prognOutmap] = {[mType] = kVector}
+	env[prognOutmapTable] = {[mType] = kTable}
 	if DEBUG then print ("progn env:" .. envdump (env) .. ", eval:" .. texpdump (expr)) end
 	--
 	local rc
@@ -6653,11 +6656,10 @@ function progn (inmap, outmap)
 			if DEBUG then debugLog ("progn end", -1) end
 		end
 	end
-	if env[prognError] then
-		outmap[prognError] = env[prognError]
+	if env[prognError] and type (env[prognOutmapTable]) == "table" then
+		env[prognOutmapTable][prognError] = env[prognError]
 	end
-	outmap[mType] = nil
-	table_texp (outmap)
+	output_texp (outmap, env[prognOutmap], env[prognOutmapTable]);
 	DEBUG = oDEBUG
 	return kt.RVSUCCESS
 end
