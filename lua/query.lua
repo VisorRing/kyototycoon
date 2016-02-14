@@ -2310,6 +2310,8 @@ function expr_vector_sort (cmd, env)
 			elseif t == "string" then
 				table.insert (index, v)
 				indexType = kTable
+			elseif symbolp (v) then
+				table.insert (index, v[1])
 			end
 		end
 	else
@@ -2320,6 +2322,8 @@ function expr_vector_sort (cmd, env)
 		elseif t == "number" then
 			table.insert (index, kwenv.col + 1)
 			indexType = kVector
+		elseif symbolp (kwenv.col) then
+			table.insert (index, kwenv.col[1])
 		end
 	end
 
