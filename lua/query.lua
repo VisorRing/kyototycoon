@@ -3716,8 +3716,8 @@ function cexpr_index_iterate (cmd, env)
 	return cexpr_index_iterate_op (op_index_iterate, op_index_iterate_desc, cmd, env)
 end
 
-function cexpr_key_prefix_op (op_asc, op_desc, cmd, env)
-	-- (op DB PREFIX_VAL [#desc] [:start EXPR_START] [#once] [:proc PROCESSOR] [#true | #false])
+function cexpr_key_prefix (cmd, env)
+	-- (key-prefix DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
 	local op, db, val
 	local params, kwenv
 	kwenv = {store = "_"}
@@ -3744,7 +3744,7 @@ function cexpr_key_prefix_op (op_asc, op_desc, cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_desc else op = op_asc end
+	if kwenv.desc then op = op_key_prefix_desc else op = op_key_prefix end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3759,18 +3759,13 @@ function cexpr_key_prefix_op (op_asc, op_desc, cmd, env)
 						end)
 end
 
-function cexpr_key_prefix (cmd, env)
-	-- (key-prefix DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
-	return cexpr_key_prefix_op (op_key_prefix, op_key_prefix_desc, cmd, env)
-end
-
 function cexpr_index_prefix (cmd, env)
 	-- (index-prefix DB ATTR EXPR_VALUE [#desc] [:start EXPR_START] [#once | :limit NUM] [:proc PROCESSOR] [#true | #false])
 	return cexpr_index_iterate_op (op_index_prefix, op_index_prefix_desc, cmd, env)
 end
 
-function cexpr_key_range_op (op_asc, op_desc, cmd, env)
-	-- (op DB EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
+function cexpr_key_range (cmd, env)
+	-- (key-range DB EXPR_VALUE_A EXPR_VALUE_B [:start EXPR_START] [:store VAR] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
 	local op, db, vala, valb
 	local params, kwenv
 	kwenv = {store = "_"}
@@ -3800,7 +3795,7 @@ function cexpr_key_range_op (op_asc, op_desc, cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_desc else op = op_asc end
+	if kwenv.desc then op = op_key_range_desc else op = op_key_range end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3817,13 +3812,8 @@ function cexpr_key_range_op (op_asc, op_desc, cmd, env)
 						end)
 end
 
-function cexpr_key_range (cmd, env)
-	-- (key-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false] [#once | :limit NUM])
-	return cexpr_key_range_op (op_key_range, op_key_range_desc, cmd, env)
-end
-
-function cexpr_index_range_op (op_asc, op_desc, cmd, env)
-	-- (op DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
+function cexpr_index_range (cmd, env)
+	-- (index-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
 	local op, db, attr, vala, valb
 	local params, kwenv
 	kwenv = {store = "_"}
@@ -3867,7 +3857,7 @@ function cexpr_index_range_op (op_asc, op_desc, cmd, env)
 	end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_desc else op = op_asc end
+	if kwenv.desc then op = op_index_range_desc else op = op_index_range end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3887,11 +3877,6 @@ function cexpr_index_range_op (op_asc, op_desc, cmd, env)
 							if DEBUG then debugProcVal (rf, -1) end
 							return rf
 						end)
-end
-
-function cexpr_index_range (cmd, env)
-	-- (index-range DB ATTR EXPR_VALUE_A EXPR_VALUE_B [#desc] [:start EXPR_START] [:proc PROCESSOR] [#true | #false])
-	return cexpr_index_range_op (op_index_range, op_index_range_desc, cmd, env)
 end
 
 function cexpr_newserial_op (op, cmd, env)
@@ -5633,7 +5618,10 @@ function db_index_range (idxspec, mvala, mvalb, outfn, startkey, mvalx, kwenv, e
 	end
 	cur = idxspec.db:cursor ()
 	if startkey then
-		rc = cur:jump (valxz .. startkey)
+--
+		writeFnError (env, cmd, nil, "start option is not implemented")
+		return ans
+--		rc = cur:jump (valxz .. startkey)
 	elseif valaz then
 		rc = cur:jump (valaz)
 	else
