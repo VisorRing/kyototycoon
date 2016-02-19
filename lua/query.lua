@@ -550,7 +550,6 @@ function texpdump (e)	-- => STRING
 			local ans = "{"
 			local c = 0
 			for k, v in pairs (e) do
---				if k ~= mType and k ~= kEVarPrefix then
 				if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 					if c > 0 then
 						ans = ans .. " "
@@ -2497,7 +2496,6 @@ function expr_table_append (cmd, env)
 		if not nullp (tbl2) then
 			if not tablep (tbl2) then writeFnError (env, cmd, tbl2, typeError) return nil end
 			for key, val in pairs (tbl2) do
---				if key ~= mType and key ~= kEVarPrefix then
 				if string.sub (key, 1, 1) ~= kEVarPrefixCh then
 					tbl[key] = val
 				end
@@ -2520,7 +2518,6 @@ function expr_table_keys (cmd, env)
 
 	local vec = {[mType] = kVector}
 	for k, v in pairs (tbl) do
---		if k ~= mType and k ~= kEVarPrefix then
 		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			table.insert (vec, k)
 		end
@@ -2543,7 +2540,6 @@ function expr_table_to_list (cmd, env)
 	local ans = {}
 	local c = ans
 	for k, v in pairs (tbl) do
---		if k ~= mType and k ~= kEVarPrefix then
 		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			c.cdr = {car = {car = k; cdr = v}}
 			c = c.cdr
@@ -2589,7 +2585,6 @@ function expr_cond (cmd, env)
 		e = e.cdr
 		if consp (prog) then
 			if checkBool (evalExpr (prog.car, env)) then
---				if DEBUG then print ("==> true") end
 				if DEBUG then debugLog (nil, 1) debugLog ("true") end
 				prog = prog.cdr
 				while consp (prog) do
@@ -2692,7 +2687,6 @@ function expr_setevar (cmd, env)
 		else
 			val = nil
 		end
---		setvar_proc (name, val, env, function (x, y, e) bindSym (kEVarPrefix .. x, y, e, true) end)
 		setvar_proc (name, val, env, function (x, y, e) bindSym (x, y, e, true) end)
 	end
 	return val
@@ -2706,7 +2700,6 @@ function expr_getevar (cmd, env)
 	e = e.cdr
 	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
 
---	return evalSym (kEVarPrefix .. name, env, true)
 	return evalSym (name, env, true)
 end
 
@@ -2918,7 +2911,7 @@ end
 
 ------------------------------------------------------------
 function cexpr_output (cmd, env)
-	-- (output EXPR_SELECTOR :store VAR #once :limit INT :next VAR #true #false)
+	-- (output EXPR_SELECTOR ... :store VAR #once :limit INT :next VAR #true #false)
 	local params, kwenv
 	kwenv = {store = prognOutmap}
 	params, kwenv = readParams (cmd, env,
@@ -2931,9 +2924,11 @@ function cexpr_output (cmd, env)
 										},
 									kwenv)
 	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local sel = params.car
-	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	local sel = {}
+	while consp (params) do
+		table.insert (sel, params.car)
+		params = params.cdr
+	end
 
 	filterLimit (kwenv)
 	kwenv.store = t_to_string (kwenv.store)
@@ -2957,7 +2952,9 @@ function cexpr_output (cmd, env)
 										if DEBUG then debugLog (nil, -1) end
 										return procVal (rc, kwenv)
 									end
-									table.insert (storemap, safenil (evalVTF (sel, env)))	-- ベクタの要素数をずらさない
+									for i, v in ipairs (sel) do
+										table.insert (storemap, safenil (evalVTF (v, env)))	-- ベクタの要素数をずらさない
+									end
 									if DEBUG then debugLog ("output (" .. describe (name) .. ", " .. texpdump_short (storemap[#storemap]) .. ")") end
 								end
 							end
@@ -2967,7 +2964,7 @@ function cexpr_output (cmd, env)
 end
 
 function cexpr_output_table (cmd, env)
-	-- (output-table EXPR_VAR EXPR_VALUE :store VAR #once :limit INTEGER] :next VAR #true #false)
+	-- (output-table EXPR_VAR EXPR_VALUE ... :store VAR #once :limit INTEGER] :next VAR #true #false)
 	local params, kwenv
 	kwenv = {store = prognOutmapTable}
 	params, kwenv = readParams (cmd, env,
@@ -2980,12 +2977,15 @@ function cexpr_output_table (cmd, env)
 										},
 									kwenv)
 	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local vkey = params.car
-	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local vval = params.car
-	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	local vkey
+	local kv = {}
+	while consp (params) do
+		vkey = params.car
+		params = params.cdr
+		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+		table.insert (kv, {vkey, params.car})
+		params = params.cdr
+	end
 
 	filterLimit (kwenv)
 	kwenv.store = t_to_string (kwenv.store)
@@ -3009,13 +3009,15 @@ function cexpr_output_table (cmd, env)
 										if DEBUG then debugLog (nil, -1) end
 										return procVal (rc, kwenv)
 									end
-									local k = t_to_string (evalExpr (vkey, env))
-									if string.sub (k, 1, 1) == kEVarPrefixCh then
-										writeFnError (env, cmd, k, "bad name.")
-									else
-										if k ~= "" then
-											storemap[k] = safenil (evalVTF (vval, env))		-- nil値は要素を削除する仕様は、ローカル変数の定義を削除してしまう。
-											if DEBUG then debugLog ("output-table (" .. describe (name) .. ", {" .. describe (k) .. " => " .. texpdump_short (storemap[k]) .. "})") end
+									for i, v in ipairs (kv) do
+										local k = t_to_string (evalExpr (v[1], env))
+										if string.sub (k, 1, 1) == kEVarPrefixCh then
+											writeFnError (env, cmd, k, "bad name.")
+										else
+											if k ~= "" then
+												storemap[k] = safenil (evalVTF (v[2], env))		-- nil値は要素を削除する仕様は、ローカル変数の定義を削除してしまう。
+												if DEBUG then debugLog ("output-table (" .. describe (name) .. ", {" .. describe (k) .. " => " .. texpdump_short (storemap[k]) .. "})") end
+											end
 										end
 									end
 								end
@@ -3082,8 +3084,8 @@ function cexpr_count (cmd, env)
 						end)
 end
 
-function cexpr_store (cmd, env)
-	-- (store VAR EXPR_VALUE #once :limit NUM :next VAR #true #false)
+function op_cexpr_store (cmd, env, eflag)
+	-- (store VAR EXPR_VALUE ... #once :limit NUM :next VAR #true #false)
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
 										{once = true;
@@ -3094,12 +3096,15 @@ function cexpr_store (cmd, env)
 										},
 									kwenv)
 	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local var = params.car
-	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local vval = params.car
-	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	local vkey
+	local kv = {}
+	while consp (params) do
+		vkey = params.car
+		params = params.cdr
+		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+		table.insert (kv, {vkey, params.car})
+		params = params.cdr
+	end
 
 	filterLimit (kwenv)
 
@@ -3107,57 +3112,31 @@ function cexpr_store (cmd, env)
 						t_to_string (cmd.car),
 						kwenv,
 						function (key, val)
-							if DEBUG then debugLog ("store", 1) end
+							if DEBUG then debugLog (t_to_string (cmd.car), 1) end
 							local rc = procLimit (kwenv, cmd, key, env)
 							if kwenv._procbreak then
 							else
-								local vkey = t_to_string (evalExpr (var, env))
-								bindSym (vkey, safenil (evalVTF (vval, env)), env)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
+								for i, v in ipairs (kv) do
+									local vkey = t_to_string (evalExpr (v[1], env))
+									bindSym (vkey, safenil (evalVTF (v[2], env)), env, eflag)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
+								end
 							end
 							if DEBUG then debugLog (nil, -1) end
 							return procVal (rc, kwenv)
 						end)
+end
+
+function cexpr_store (cmd, env)
+	-- (store VAR EXPR_VALUE ... #once :limit NUM :next VAR #true #false)
+	return op_cexpr_store (cmd, env, false)
 end
 
 function cexpr_e_store (cmd, env)
-	-- (e-store VAR EXPR_VALUE #once :limit NUM :next VAR #true #false)
-	local params, kwenv
-	params, kwenv = readParams (cmd, env,
-										{once = true;
-										 limit = true;
-										 next = true;
-										 ["true"] = true;
-										 ["false"] = true;
-										},
-									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local var = params.car
-	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local vval = params.car
-	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-
-	filterLimit (kwenv)
-
-	return ConsumerStarter.new (
-						t_to_string (cmd.car),
-						kwenv,
-						function (key, val)
-							if DEBUG then debugLog ("e-store", 1) end
-							local rc = procLimit (kwenv, cmd, key, env)
-							if kwenv._procbreak then
-							else
-								local vkey = t_to_string (evalExpr (var, env))
---								bindSym (kEVarPrefix .. vkey, safenil (evalVTF (vval, env)), env, true)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
-								bindSym (vkey, safenil (evalVTF (vval, env)), env, true)		-- nilは要素を削除する仕様はローカル変数の定義を削除してしまう
-							end
-							if DEBUG then debugLog (nil, -1) end
-							return procVal (rc, kwenv)
-						end)
+	-- (e-store VAR EXPR_VALUE ... #once :limit NUM :next VAR #true #false)
+	return op_cexpr_store (cmd, env, true)
 end
 
-function cexpr_undef (cmd, env)
+function op_cexpr_undef (cmd, env, eflag)
 	-- (undef VAR...)
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
@@ -3169,11 +3148,11 @@ function cexpr_undef (cmd, env)
 						t_to_string (cmd.car),
 						kwenv,
 						function (key, val)
-							if DEBUG then debugLog ("undef", 1) end
+							if DEBUG then debugLog (t_to_string (cmd.car), 1) end
 							local p = params
 							while consp (p) do
 								local key = t_to_string (evalExpr (p.car, env))
-								bindSym (key, nil, env)		-- nilは要素を削除
+								bindSym (key, nil, env, eflag)		-- nilは要素を削除
 								p = p.cdr
 							end
 							if DEBUG then debugLog (nil, -1) end
@@ -3181,29 +3160,14 @@ function cexpr_undef (cmd, env)
 						end)
 end
 
+function cexpr_undef (cmd, env)
+	-- (undef VAR...)
+	return op_cexpr_undef (cmd, env, false)
+end
+
 function cexpr_e_undef (cmd, env)
 	-- (e-undef VAR...)
-	local params, kwenv
-	params, kwenv = readParams (cmd, env,
-										{},
-									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-
-	return ConsumerStarter.new (
-						t_to_string (cmd.car),
-						kwenv,
-						function (key, val)
-							if DEBUG then debugLog ("e-undef", 1) end
-							local p = params
-							while consp (p) do
-								local key = t_to_string (evalExpr (p.car, env))
---								bindSym (kEVarPrefix .. key, nil, env)		-- nilは要素を削除
-								bindSym (key, nil, env, true)		-- nilは要素を削除
-								p = p.cdr
-							end
-							if DEBUG then debugLog (nil, -1) end
-							return true
-						end)
+	return op_cexpr_undef (cmd, env, true)
 end
 
 function cexpr_select (cmd, env)
@@ -4171,6 +4135,7 @@ function cexpr_conproc (cmd, env)
 				return nil
 			end
 		end
+		-- ローカル変数あり
 		return ConsumerStarter.new (
 							t_to_string (cmd.car),
 							kwenv,
@@ -4194,6 +4159,7 @@ function cexpr_conproc (cmd, env)
 													for i, v in ipairs (procs) do
 														rc = v:next (key, val)
 														if DEBUG then debugProcVal (rc) end
+														-- on-breakのためにprocessorを実行した後にもチェックする
 														if breakif and checkBool (evalFunc (breakif, env)) then
 															if DEBUG then debugLog ("break") end
 															if onbreak then
@@ -4217,6 +4183,7 @@ function cexpr_conproc (cmd, env)
 										)
 							end)
 	else
+		-- ローカル変数なし
 		return ConsumerStarter.new (
 							t_to_string (cmd.car),
 							kwenv,
@@ -4233,6 +4200,7 @@ function cexpr_conproc (cmd, env)
 									for i, v in ipairs (procs) do
 										rc = v:next (key, val)
 										if DEBUG then debugProcVal (rc) end
+										-- on-breakのためにprocessorを実行した後にもチェックする
 										if breakif and checkBool (evalFunc (breakif, env)) then
 											if DEBUG then debugLog ("break") end
 											if onbreak then
@@ -4419,7 +4387,6 @@ function cexpr_conproc_table_each (cmd, env)
 												local tbl2 = evalExpr (tbl, env)
 												if nullp (tbl2) or not tablep (tbl2) then return rc end
 												for k, v in pairs (tbl2) do
---													if k ~= mType and k ~= kEVarPrefix then
 													if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 														if varkey ~= "" then
 															localEnv[varkey] = k
@@ -4696,20 +4663,20 @@ optable = {
 --DOC:
 --DOC:|table:w=100%|t:c:w=14%|t:w=40%|t:|
 --DOC:|h:ファンクション|h:パラメータ|h:説明|
---DOC:| output | ('''output''' ''EXPR_SELECTOR'' ''':store''' ''VAR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' | progn関数を繰り返し実行した結果を集約して、VECTORとして変数''VAR''に格納する。''EXPR_SELECTOR''はDBアクセス時に評価され、結果のVECTORの要素となる。''EXPR_SELECTOR''の評価結果がVECTOR型、TABLE型の時、それぞれVECTOR、TABLEの要素を評価して出力する。シンボルかCONSの時、評価して得られた値を出力する。storeパラメータで出力する変数を指定する。省略した場合は、変数outputに出力する。''EXPR_SELECTOR''が実行されなかった時、出力は何も追加されないベクタになる。|
+--DOC:| output | ('''output''' ''EXPR_SELECTOR'' ... ''':store''' ''VAR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' | progn関数を繰り返し実行した結果を集約して、VECTORとして変数''VAR''に格納する。''EXPR_SELECTOR''はDBアクセス時に評価され、結果のVECTORの要素となる。''EXPR_SELECTOR''の評価結果がVECTOR型、TABLE型の時、それぞれVECTOR、TABLEの要素を評価して出力する。シンボルかCONSの時、評価して得られた値を出力する。storeパラメータで出力する変数を指定する。省略した場合は、変数outputに出力する。''EXPR_SELECTOR''が実行されなかった時、出力は何も追加されないベクタになる。|
 		["output"] = cexpr_output;
---DOC:| output-table | ('''output-table''' ''EXPR_KEY'' ''EXPR_VALUE'' ''':store''' ''VAR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |progn関数を繰り返し実行した結果を集約して、TABLEとして変数''VAR''に格納する。|
+--DOC:| output-table | ('''output-table''' ''EXPR_KEY'' ''EXPR_VALUE'' ... ''':store''' ''VAR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |progn関数を繰り返し実行した結果を集約して、TABLEとして変数''VAR''に格納する。|
 		["output-table"] = cexpr_output_table;
 --DOC:| count | ('''count''' ''VAR'' ''':every''' ''NUM'' ''':residue''' ''NUM'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' '''#true''' '''#false''') -> ''PROCESSOR'' |レコード数をカウントし、変数に格納する。変数は'output.countなどと指定する。:everyパラメータで指定した回数カウントするごとに:procパラメータで指定したconcurrentファンクションを実行する。カウント数を回数で割った剰余が:residueパラメータに一致する時、:procパラメータを実行する。:residueパラメータを省略すると、1が指定される。|
 		["count"] = cexpr_count;
---DOC:| store | ('''store''' ''VAR'' ''EXPR_VALUE'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |値を変数に格納する。|
+--DOC:| store | ('''store''' ''VAR'' ''EXPR_VALUE'' ... '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' |値を変数に格納する。|
 		["store"] = cexpr_store;
---DOC:| e-store | ('''e-store''' ''VAR'' ''EXPR_VALUE'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' | 値をE変数に格納するconcurrentファンクション。|
+--DOC:| e-store | ('''e-store''' ''VAR'' ''EXPR_VALUE'' ... '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' '''#true''' '''#false''') -> ''PROCESSOR'' | 値をE変数に格納するconcurrentファンクション。|
 		["e-store"] = cexpr_e_store;
 --DOC:| undef | ('''undef''' ''VAR''...) -> ''PROCESSOR'' |変数を削除するconcurrentファンクションを返す。|
 		["undef"] = cexpr_undef;
 --DOC:| e-undef | ('''e-undef''' ''VAR''...) -> ''PROCESSOR'' |E変数を削除するconcurrentファンクションを返す。|
-		["e-undef"] = cexpr_undef;
+		["e-undef"] = cexpr_e_undef;
 --DOC:| select | ('''select''' ''EXPR_CONDITION'' ''':proc''' ''PROCESSOR'' ''':false-proc''' ''PROCESSOR'' '''#once''' ''':limit''' ''NUM'' ''':next''' ''VAR'' ''':offset''' ''NUM'' '''#true''' '''#false''') -> ''PROCESSOR'' | シンボル_にバインドされているテーブルが、cond, limit, offsetの条件に合う場合、''PROCESSOR''に適用する。limitに達した時、次のキーを:nextオプションで指定した名前の変数に格納する。|
 		["select"] = cexpr_select;
 --DOC:| add | ('''add''' ''DB'' ''EXPR_KEY'' ''EXPR_TABLE'' ''':store''' ''VAR'' ''':proc''' ''PROCESSOR'' ''':xt''' ''SEC'' ''':unique''' ''VECTOR_KEY'' '''#true''' '''#false''') -> ''PROCESSOR'' |レコードを追加する。:storeオプションで指定した変数にプライマリキーが格納される。:storeオプション無指定の場合、変数「_」に格納される。変数はローカル変数として隔離される。|
@@ -4798,7 +4765,6 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 	local i = #env
 	local p, w, v, q
 	v = table.remove (a, 1)
---	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
 	if string.sub (v, 1, 1) == kEVarPrefixCh then
 		writeFnError (env, nil, v, "bad name")
 		return nil
@@ -4815,7 +4781,6 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 		i = i - 1
 	end
 	for i, v in ipairs (a) do
---		if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
 		if string.sub (v, 1, 1) == kEVarPrefixCh then
 			writeFnError (env, nil, v, "bad name")
 			return nil
@@ -4861,7 +4826,6 @@ function refTSym (name, env, eflag)
 	local a = kt.split (name, ".")
 	local i = #env
 	local v = table.remove (a, 1)
---	if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
 	if string.sub (v, 1, 1) == kEVarPrefixCh then
 		writeFnError (env, name, v, "bad name")
 		return nil
@@ -4881,7 +4845,6 @@ function refTSym (name, env, eflag)
 		return e, v
 	else
 		local k = table.remove (a, #a)
---		if not eflag and string.sub (k, 1, 1) == kEVarPrefixCh then
 		if string.sub (k, 1, 1) == kEVarPrefixCh then
 			writeFnError (env, name, k, "bad name")
 			return nil
@@ -4901,7 +4864,6 @@ function refTSym (name, env, eflag)
 			end
 		end
 		for i, v in ipairs (a) do
---			if not eflag and string.sub (v, 1, 1) == kEVarPrefixCh then
 			if string.sub (v, 1, 1) == kEVarPrefixCh then
 				writeFnError (env, name, v, "bad name")
 				return nil
@@ -4960,7 +4922,6 @@ end
 function evalTable (e, env)
 	local ans = {[mType] = kTable}
 	for k, v in pairs (e) do
---		if k ~= mType and k ~= kEVarPrefix then
 		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			if consp (v) then
 				-- リテラル内の関数の実行は安全でない
@@ -4977,7 +4938,6 @@ end
 function dupTable (e)
 	local ans = {[mType] = kTable}
 	for k, v in pairs (e) do
---		if k ~= mType and k ~= kEVarPrefix then
 		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 			ans[k] = v
 		end
@@ -5032,8 +4992,6 @@ end
 function evalLambda (cmd, args, env)
 	if DEBUG then debugLogExp (texpdump (cmd) .. " " .. texpdump (args)) end
 	local e = cmd.cdr
---	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
---	if not nullp (e.car) and not consp (e.car) then writeFnError (env, cmd, e.car, typeError) end
 	local palist, kwlist, restarg = parseParams (e.car, env)
 	e = e.cdr
 
@@ -6387,7 +6345,6 @@ function op_restore_serial_table (tbl)
 		return kt.RVEINVALID
 	end
 	for key, val in pairs (tbl) do
---		if key == mType or key == kEVarPrefix then
 		if string.sub (key, 1, 1) == kEVarPrefixCh then
 		elseif nullp (val) then
 			serialdb:remove (key)
@@ -6492,7 +6449,6 @@ end
 
 function op_reindex (db, attr)
 	local cur, rc, key, val, xt, obj
---	local idxspec = idx[db][attr]
 	local idxspec = idxspecSearch (idx[db], attr)
 	if idxspec then
 		idxspec.db:begin_transaction ()
