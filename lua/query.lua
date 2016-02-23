@@ -2424,7 +2424,7 @@ function expr_table_get (cmd, env)
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
 	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local key = evalExpr (e.car, env)
+	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
 	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
 
@@ -2443,7 +2443,7 @@ function expr_table_put (cmd, env)
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
 	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local key = evalExpr (e.car, env)
+	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
 	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
 	local val = evalExpr (e.car, env)
@@ -2467,7 +2467,7 @@ function expr_table_del (cmd, env)
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
 	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local key = evalExpr (e.car, env)
+	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
 	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
 
@@ -2662,13 +2662,25 @@ function expr_setvar (cmd, env)
 end
 
 function expr_getvar (cmd, env)
-	-- (getvar NAME) -> VALUE
-	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local name = t_to_string (evalExpr (e.car, env))
-	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	-- (getvar NAME :parent INT) -> VALUE
+	local params, kwenv = readParams (cmd, env,
+											{parent = true;
+											});
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	local name = t_to_string (evalExpr (params.car, env))
+	params = params.cdr
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
 
+	if kwenv.parent then
+		local v = tonumber (kwenv.parent)
+		if v > 0 and #env - v > 0 then
+			local newenv = {}
+			for i = 1, #env - v do
+				table.insert (newenv, env[i])
+			end
+			return evalSym (name, newenv)
+		end
+	end
 	return evalSym (name, env)
 end
 
@@ -2693,13 +2705,25 @@ function expr_setevar (cmd, env)
 end
 
 function expr_getevar (cmd, env)
-	-- (getevar NAME) -> VALUE
-	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local name = t_to_string (evalExpr (e.car, env))
-	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	-- (getevar NAME :parent INT) -> VALUE
+	local params, kwenv = readParams (cmd, env,
+											{parent = true;
+											});
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	local name = t_to_string (evalExpr (params.car, env))
+	params = params.cdr
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
 
+	if kwenv.parent then
+		local v = tonumber (kwenv.parent)
+		if v > 0 and #env - v > 0 then
+			local newenv = {}
+			for i = 1, #env - v do
+				table.insert (newenv, env[i])
+			end
+			return evalSym (name, newenv, true)
+		end
+	end
 	return evalSym (name, env, true)
 end
 
@@ -4610,11 +4634,11 @@ optable = {
 		["cond"] = expr_cond;
 --DOC:| setvar | ('''setvar''' ''NAME'' ''VALUE'') -> ''VALUE'' <br> ('''setvar''' ''LIST'' [''LIST'' / ''VECTOR'']) |変数に値を保存する。|
 		["setvar"] = expr_setvar;
---DOC:| getvar | ('''getvar''' ''NAME'') -> ''VALUE'' | 変数から値を読み出す。|
+--DOC:| getvar | ('''getvar''' ''NAME'' :parent ''INT'') -> ''VALUE'' | 変数から値を読み出す。|
 		["getvar"] = expr_getvar;
 --DOC:| setevar | ('''setevar''' ''NAME'' ''VALUE'') -> ''VALUE'' <br> ('''setevar''' ''LIST'' [''LIST'' / ''VECTOR'']) | E変数に値を保存する。|
 		["setevar"] = expr_setevar;
---DOC:| getevar | ('''getevar''' ''NAME'') -> ''VALUE'' | E変数から値を読み出す。|
+--DOC:| getevar | ('''getevar''' ''NAME'' :parent ''INT'') -> ''VALUE'' | E変数から値を読み出す。|
 		["getevar"] = expr_getevar;
 --DOC:| progn | ('''progn''' ''FUNC''...) |FUNCを実行する。|
 		["progn"] = expr_progn;
