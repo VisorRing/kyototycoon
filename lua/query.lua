@@ -1047,7 +1047,7 @@ end
 --DOC:*テーブル = 文字列とS式のペアの連想配列
 --DOC:**{"a" => 1 "b" => (1 2 3) "c" => [a b c]}
 --DOC:
---DOC:*数値、文字列、ベクタ、テーブルを評価すると、もとのまま。
+--DOC:*数値、文字列、ベクタ、テーブルを評価しても、もとのまま。
 --DOC:*シンボルを評価すると、シンボルにバインドされた値が返る。
 --DOC:*リストを評価すると、リストの第一要素のシンボルにバインドされた関数を実行する。
 --DOC:
@@ -1058,7 +1058,7 @@ end
 --DOC:*環境変数をピリオドで連結して、入れ子になった環境にアクセスできる。
 --DOC:*prognスクリプト関数内で実行されるファンクションは、環境にアクセスできる。
 --DOC:*prognスクリプト関数は、_envパラメータで、環境変数の初期値を与えることができる。
---DOC:*prognスクリプト関数は、環境変数'''output'''に対応する環境を出力する。
+--DOC:*prognスクリプト関数は、環境変数'''output'''、'''output-table'''にバインドされた環境を出力する。
 --DOC:*DBにアクセスするファンクションは、storeパラメータで指定した環境変数にレコードを格納し、procパラメータで指定したconcurrentファンクションを実行する。
 --DOC:**DBのレコードは、属性名を変数名とする入れ子になった環境として変数に格納される。
 --DOC:
@@ -4077,9 +4077,61 @@ function cexpr_coneval (cmd, env)
 						end)
 end
 
+function op_localvar (outmap, e, cmd, env, eflag)
+	local function op_var (name, val)
+		local c = t_to_string (name)
+		if c ~= "" and not string.find (c, ".", 1, true) then
+			if string.sub (c, 1, 1) ~= kEVarPrefixCh then
+				if eflag then
+					outmap[kEVarPrefix .. c] = val
+				else
+					outmap[c] = val
+				end
+			end
+		else
+			writeFnError (env, cmd, c, "bad name")
+			return true
+		end
+		return false
+	end
+
+	if not e then
+	elseif consp (e) then
+		while consp (e) do
+			c = e.car
+			e = e.cdr
+			if op_var (c, {}) then return true end
+		end
+	elseif vectorp (e) then
+		for i, v in ipairs (e) do
+			if op_var (v, {}) then return true end
+		end
+	elseif tablep (e) then
+		for k, v in pairs (e) do
+			if op_var (k, v) then return true end
+		end
+	else
+		if op_var (e, {}) then return true end
+	end
+	return false
+end
+
+function debugLogLocalVar (vars, env)
+	for k, v in pairs (vars) do
+		if string.sub (k, 1, string.len (kEVarPrefix)) == kEVarPrefix then
+			debugLog ("[*" .. string.sub (k, string.len (kEVarPrefix) + 1) .. " := " .. texpdump_short (env[k]) .. "]")
+		else
+			debugLog ("[" .. k .. " := " .. texpdump_short (env[k]) .. "]")
+		end
+	end
+end
+
 function cexpr_conproc (cmd, env)
-	-- (conproc :var VAR :e-var VAR           :break-if EXPR #break-if-limit PROCESSOR ...)
-	-- (conproc :var (VAR...) :e-var (VAR...) :break-if EXPR #break-if-limit PROCESSOR ...)
+	-- (conproc :var VARDEF :e-var VARDEF :break-if EXPR #break-if-limit PROCESSOR ...)
+	-- VARDEF ::= VAR
+	-- VARDEF ::= (VAR ...)
+	-- VARDEF ::= [VAR ...]
+	-- VARDEF ::= {VAR => VAL ...}
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
 										{["var"] = true;
@@ -4107,69 +4159,28 @@ function cexpr_conproc (cmd, env)
 	if consumerfnp (kwenv["on-break"]) then
 		onbreak = kwenv["on-break"]
 	end
-	local localvars = {}
 	if kwenv.var or kwenv["e-var"] then
+		local vars = {}
 		local dvar = kwenv.var
-		if not dvar then
-		elseif consp (dvar) then
-			local c
-			while consp (dvar) do
-				c = t_to_string (dvar.car)
-				dvar = dvar.cdr
-				if c ~= "" and not string.find (c, ".", 1, true) then
-					table.insert (localvars, c)
-				else
-					writeFnError (env, cmd, c, "bad name")
-					return nil
-				end
-			end
-		elseif vectorp (dvar) then
-			writeFnError (env, cmd, dvar, paramError)
-		else
-			local c = t_to_string (dvar)
-			if c ~= "" and string.find (c, ".", 1, true) == nil then
-				table.insert (localvars, c)
-			else
-				writeFnError (env, cmd, c, "bad name")
-				return nil
-			end
+		if dvar then
+			if op_localvar (vars, dvar, cmd, env) then return nil end
 		end
 		dvar = kwenv["e-var"]
-		if not dvar then
-		elseif consp (dvar) then
-			local c
-			while consp (dvar) do
-				c = t_to_string (dvar.car)
-				dvar = dvar.cdr
-				if c ~= "" and not string.find (c, ".", 1, true) then
-					table.insert (localvars, kEVarPrefix .. c)
-				else
-					writeFnError (env, cmd, c, "bad name")
-					return nil
-				end
-			end
-		elseif vectorp (dvar) then
-			writeFnError (env, cmd, dvar, paramError)
-		else
-			local c = t_to_string (dvar)
-			if c ~= "" and not string.find (c, ".", 1, true) then
-				table.insert (localvars, kEVarPrefix .. c)
-			else
-				writeFnError (env, cmd, c, "bad name")
-				return nil
-			end
+		if dvar then
+			if op_localvar (vars, dvar, cmd, env, true) then return nil end
 		end
 		-- ローカル変数あり
 		return ConsumerStarter.new (
 							t_to_string (cmd.car),
 							kwenv,
 							function (key, val)
-								if DEBUG then local c = 0 local s = "conproc begin: local: (" for i, v in ipairs (localvars) do if c > 0 then s = s .. " " else c = 1 end s = s .. v end debugLog (s .. ")", 1) end
+								if DEBUG then debugLog ("conproc begin", 1) end
 								local localenv = {}
 								-- このPROCESSORが繰り返し呼ばれた時、ローカル変数を初期化しなければならない。
-								for i, v in ipairs (localvars) do
-									localenv[v] = {}
+								for k, v in pairs (vars) do
+									localenv[k] = safenil (evalExpr (v))
 								end
+								if DEBUG then debugLogLocalVar (vars, localenv) end
 								return pushEnv (localenv, env,
 											function (env)
 												local rc = true
@@ -4249,32 +4260,28 @@ function cexpr_conproc (cmd, env)
 end
 
 function cexpr_local_var (cmd, env)
-	-- (local-var SYMBOL...)
+	-- (local-var VARDEF)
+	-- VARDEF ::= VAR ...
+	-- VARDEF ::= {VAR => VAL ...}
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
 										{},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local p = params
 	local vars = {}
-	local v
-	while consp (p) do
-		v = t_to_string (evalExpr (p.car, env))
-		if v == "" or string.find (v, ".", 1, true) or string.sub (v, 1, 1) == kEVarPrefixCh then
-			writeFnError (env, cmd, v, "bad name")
-			return nil
-		end
-		table.insert (vars, v)
-		p = p.cdr
+	local e
+	while consp (params) do
+		e = evalExpr (params.car, env)
+		params = params.cdr
+		if op_localvar (vars, e, cmd, env) then return nil end
 	end
-
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
 						{},
 						function ()
-							for i, v in ipairs (vars) do
-								env[#env][v] = {}		-- safenil
+							for k, v in pairs (vars) do
+								env[#env][k] = safenil (evalExpr (v))
 							end
+							if DEBUG then debugLogLocalVar (vars, env[#env]) end
 							return true
 						end)
 end
@@ -4285,27 +4292,21 @@ function cexpr_local_e_var (cmd, env)
 	params, kwenv = readParams (cmd, env,
 										{},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	local p = params
 	local vars = {}
-	local v
-	while consp (p) do
-		v = t_to_string (evalExpr (p.car, env))
-		if v == "" or string.find (v, ".", 1, true) then
-			writeFnError (env, cmd, v, "bad name")
-			return nil
-		end
-		table.insert (vars, kEVarPrefix .. v)
-		p = p.cdr
+	local e
+	while consp (params) do
+		e = evalExpr (params.car, env)
+		params = params.cdr
+		if op_localvar (vars, e, cmd, env, true) then return nil end
 	end
-
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
 						{},
 						function ()
-							for i, v in ipairs (vars) do
-								env[#env][v] = {}		-- safenil
+							for k, v in pairs (vars) do
+								env[#env][k] = safenil (evalExpr (v))
 							end
+							if DEBUG then debugLogLocalVar (vars, env[#env]) end
 							return true
 						end)
 end
@@ -4677,8 +4678,8 @@ optable = {
 --DOC:+ 記法について
 --DOC:+* パラメータに指定するオブジェクトは斜体で書く。
 --DOC:+* キーワードは通常の立体字で書く。
---DOC:+* 「#」で始まるキーワードは、オプションパラメータ。必要な場合、指定する。
---DOC:+* 「:」で始まるキーワードは、パラーメタを１つ取るオプションパラメータ。必要な場合、指定する。
+--DOC:+* 「#」で始まるキーワードは、オプションパラメータ。必要に応じて指定する。
+--DOC:+* 「:」で始まるキーワードは、パラーメタを１つ取るオプションパラメータ。必要に応じて指定する。
 --DOC:+* concurrentファンクションの戻り値の関数オブジェクトを''PROCESSOR''と表記する。
 --DOC:+* 斜体で、「''EXPR_''」で始まるパラメータは、concurrentファンクションの評価時には評価されず、関数オブジェクトを評価するときに評価される。
 --DOC:
@@ -4753,11 +4754,11 @@ optable = {
 		["popmsg"] = cexpr_popmsg;
 --DOC:| coneval | ('''coneval''' ''EXPR''...) -> ''PROCESSOR'' |''EXPR''を実行するconcurrentファンクションを出力する。|
 		["coneval"] = cexpr_coneval;
---DOC:| conproc | ('''conproc''' ''':var''' ''SYMBOL_or_SYMBOL_LIST'' ''':e-var''' ''SYMBOL_or_SYMBOL_LIST'' ''':break-if''' ''EXPR_BOOL'' ''':on-break''' ''PROCESSOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR''...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
+--DOC:| conproc | ('''conproc''' ''':var''' ''VARDEF'' ''':e-var''' ''VARDEF'' ''':break-if''' ''EXPR_BOOL'' ''':on-break''' ''PROCESSOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR''...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
 		["conproc"] = cexpr_conproc;
---DOC:| local-var | ('''local-var''' ''SYMBOL''...) -> ''PROCESSOR'' | ローカル変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
+--DOC:| local-var | ('''local-var''' ''VARDEF'') -> ''PROCESSOR'' | ローカル変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
 		["local-var"] = cexpr_local_var;
---DOC:| local-e-var | ('''local-e-var''' ''SYMBOL''...) -> ''PROCESSOR'' | ローカルのE変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
+--DOC:| local-e-var | ('''local-e-var''' ''VARDEF'') -> ''PROCESSOR'' | ローカルのE変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
 		["local-e-var"] = cexpr_local_e_var;
 --DOC:| conproc-vector-each | ('''conproc-vector-each''' ''VAR'' ''EXPR_VECTOR'' '''#break-if-limit''' ''PROCESSOR''...) -> ''PROCESSOR''|''EXPR_VECTOR''の各要素を変数''VAR''に保存して、''PROCESSOR''を実行するconcurrentファンクションを出力する。|
 		["conproc-vector-each"] = cexpr_conproc_vector_each;
@@ -4909,12 +4910,12 @@ function refTSym (name, env, eflag)
 	end
 end
 
-function bindSym (name, val, env, eflag)
+function bindSym (name, val, env, eflag)	-- val=nilは変数を削除
 	local t, k = refTSym (name, env, eflag)
 	if t and k then
 		t[k] = val
 		if eflag then
-			if DEBUG then debugLog ("[" .. name .. "/" .. k .. " := " .. texpdump_short (val) .. "]") end
+			if DEBUG then debugLog ("[*" .. name .. " := " .. texpdump_short (val) .. "]") end
 		else
 			if DEBUG then debugLog ("[" .. name .. " := " .. texpdump_short (val) .. "]") end
 		end
@@ -5086,7 +5087,7 @@ function evalLambda (cmd, args, env)
 	return ans
 end
 
-function evalFunc (e, env)	-- lambdaを実行する
+function evalFunc (e, env)
 	return evalExpr (e, env)
 end
 
@@ -5106,7 +5107,7 @@ function evalExpr (e, env)	-- lambdaは自身を返す
 			elseif lambdap (op) then
 				return evalLambda (op, e.cdr, env)
 			end
-			return nil		-- error
+			return {}		-- nil
 		elseif t == kSymbol then
 			return evalSym (e[1], env)
 		elseif t == kVector then
