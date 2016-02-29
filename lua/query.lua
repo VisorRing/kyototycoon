@@ -1168,7 +1168,7 @@ function equalTable (a, b)		-- 両パラメータ共にTable型
 end
 
 function filterProcPushEnv (kwenv, cmd, env)
-	if kwenv.proc then
+	if not nullp (kwenv.proc) then
 		if not consumerfnp (kwenv.proc) then writeFnError (env, cmd, kwenv.proc, typeError) return true end
 		kwenv.proc = ConsumerPushEnv.new (env, kwenv.store, kwenv.proc)
 	end
@@ -1176,13 +1176,13 @@ function filterProcPushEnv (kwenv, cmd, env)
 end
 
 function filterOffset (kwenv)
-	if kwenv.offset then
+	if not nullp (kwenv.offset) then
 		kwenv.offset = tonumber (kwenv.offset)
 	end
 end
 
 function filterLimit (kwenv)
-	if kwenv.once then
+	if not nullp (kwenv.once) then
 		kwenv.limit = nil
 	else
 		if nullp (kwenv.limit) then
@@ -1212,7 +1212,7 @@ function procOffset (kwenv, cmd)
 end
 
 function procLimit (kwenv, cmd, key, env)
-	if kwenv.once then
+	if checkBool (kwenv.once) then
 		if DEBUG then debugLog (t_to_string (cmd.car) .. ": once") end
 		return false
 	end
@@ -2671,7 +2671,7 @@ function expr_getvar (cmd, env)
 	params = params.cdr
 	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
 
-	if kwenv.parent then
+	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
 		if v > 0 and #env - v > 0 then
 			local newenv = {}
@@ -2714,7 +2714,7 @@ function expr_getevar (cmd, env)
 	params = params.cdr
 	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
 
-	if kwenv.parent then
+	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
 		if v > 0 and #env - v > 0 then
 			local newenv = {}
@@ -3069,9 +3069,9 @@ function cexpr_count (cmd, env)
 	params = params.cdr
 	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
 
-	if kwenv.every then
+	if not nullp (kwenv.every) then
 		kwenv.every = tonumber (kwenv.every)
-		if kwenv.residue then
+		if not nullp (kwenv.residue) then
 			kwenv.residue = tonumber (kwenv.residue)
 		else
 			kwenv.residue = 1
@@ -3096,7 +3096,7 @@ function cexpr_count (cmd, env)
 								v = v + 1
 								e[name] = v
 								if DEBUG then debugLog ("count (" .. tostring (name) .. " := " .. tostring (v) .. ")") end
-								if kwenv.proc then
+								if consumerfnp (kwenv.proc) then
 									if not kwenv.every or v % kwenv.every == kwenv.residue then
 										if DEBUG then debugLog (nil, 1) end
 										rc = kwenv.proc:next (key, v)
@@ -3232,7 +3232,7 @@ function cexpr_select (cmd, env)
 								if not procOffset (kwenv, cmd) then
 									rc = procLimit (kwenv, cmd, key, env)
 									if kwenv._procbreak then
-									elseif kwenv.proc then
+									elseif consumerfnp (kwenv.proc) then
 										local rc2 = kwenv.proc:next (key, val)
 										rc = rc and rc2
 										if DEBUG then debugProcVal (rc) end
@@ -3240,7 +3240,7 @@ function cexpr_select (cmd, env)
 								end
 							else
 								if DEBUG then debugLog ("false") end
-								if kwenv["false-proc"] then
+								if consumerfnp (kwenv["false-proc"]) then
 									if not procOffset (kwenv, cmd) then
 										rc = procLimit (kwenv, cmd, key, env)
 										if kwenv._procbreak then
@@ -3569,7 +3569,7 @@ function cexpr_key_iterate (cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_key_iterate_desc else op = op_key_iterate end
+	if checkBool (kwenv.desc) then op = op_key_iterate_desc else op = op_key_iterate end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3681,7 +3681,7 @@ function cexpr_index_iterate_op (op_asc, op_desc, cmd, env)
 	end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_desc else op = op_asc end
+	if checkBool (kwenv.desc) then op = op_desc else op = op_asc end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]."..t_to_string (cmd.car),
@@ -3732,7 +3732,7 @@ function cexpr_key_prefix (cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_key_prefix_desc else op = op_key_prefix end
+	if checkBool (kwenv.desc) then op = op_key_prefix_desc else op = op_key_prefix end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3783,7 +3783,7 @@ function cexpr_key_range (cmd, env)
 	if not db then return nil end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_key_range_desc else op = op_key_range end
+	if checkBool (kwenv.desc) then op = op_key_range_desc else op = op_key_range end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -3845,7 +3845,7 @@ function cexpr_index_range (cmd, env)
 	end
 	if filterProcPushEnv (kwenv, cmd, env) then return nil end
 	filterLimit (kwenv)
-	if kwenv.desc then op = op_index_range_desc else op = op_index_range end
+	if checkBool (kwenv.desc) then op = op_index_range_desc else op = op_index_range end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
@@ -4159,7 +4159,7 @@ function cexpr_conproc (cmd, env)
 	if consumerfnp (kwenv["on-break"]) then
 		onbreak = kwenv["on-break"]
 	end
-	if kwenv.var or kwenv["e-var"] then
+	if not nullp (kwenv.var) or not nullp (kwenv["e-var"]) then
 		local vars = {}
 		local dvar = kwenv.var
 		if dvar then
@@ -4203,7 +4203,7 @@ function cexpr_conproc (cmd, env)
 															end
 															break
 														end
-														if kwenv["break-if-limit"] and not rc then
+														if checkBool (kwenv["break-if-limit"]) and not rc then
 															if onbreak then
 																if DEBUG then debugLog ("on-break") end
 																onbreak:next (key, val)
@@ -4244,7 +4244,7 @@ function cexpr_conproc (cmd, env)
 											end
 											break
 										end
-										if kwenv["break-if-limit"] and not rc then
+										if checkBool (kwenv["break-if-limit"]) and not rc then
 											if onbreak then
 												if DEBUG then debugLog ("on-break") end
 												onbreak:next (key, val)
@@ -4360,7 +4360,7 @@ function cexpr_conproc_vector_each (cmd, env)
 														rc = p:next (nil, v)
 														-- limitで中断する
 														if DEBUG then debugProcVal (rc) end
-														if kwenv["break-if-limit"] and not rc then
+														if checkBool (kwenv["break-if-limit"]) and not rc then
 															if DEBUG then debugLog ("break") debugLog ("conproc-vector-each end", -1) end
 															return rc
 														end
@@ -4424,7 +4424,7 @@ function cexpr_conproc_table_each (cmd, env)
 															rc = p:next (nil, v)
 															-- limitで中断する
 															if DEBUG then debugProcVal (rc) end
-															if kwenv["break-if-limit"] and not rc then
+															if checkBool (kwenv["break-if-limit"]) and not rc then
 																if DEBUG then debugLog ("break") debugLog ("conproc-table-each end", -1) end
 																return rc
 															end
@@ -5763,7 +5763,7 @@ function op_dbadd (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 		kt.log ("error", "inserting a record failed")
 		return kt.RVEINTERNAL
 	end
-	if key and outfn then
+	if key and consumerfnp (outfn) then
 		rf = outfn:next (nil, key)	-- 繰り返しではないので、nextvarをセットする必要はない
 	end
 	return kt.RVSUCCESS, rf
@@ -5825,7 +5825,7 @@ function op_dbset (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 		kt.log ("error", "inserting a record failed")
 		return kt.RVEINTERNAL
 	end
-	if key and outfn then
+	if key and consumerfnp (outfn) then
 		rf = outfn:next (nil, key)		-- nextvarをセットする必要はない
 	end
 	return kt.RVSUCCESS, rf
@@ -5894,7 +5894,7 @@ function op_dbupdate (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 			kt.log ("error", "updating a record failed")
 			return kt.RVEINTERNAL
 		end
-		if key and outfn then		-- レコードがある場合のみ
+		if key and consumerfnp (outfn) then		-- レコードがある場合のみ
 			rf = outfn:next (nil, key)		-- nextvarをセットする必要はない
 		end
 	end
@@ -5938,7 +5938,7 @@ function op_increment (outfn, db, key, attr, delta, xt)
 			kt.log ("error", "updating a record failed")
 			return kt.RVEINTERNAL
 		end
-		if key and outfn then
+		if key and consumerfnp (outfn) then
 			rc = outfn:next (nil, nv)		-- nextvarをセットする必要はない
 		end
 	end
@@ -5970,7 +5970,7 @@ function op_dbdel (outfn, db, key, exdb)
 			kt.log ("error", "removing a record failed")
 			return kt.RVEINTERNAL
 		end
-		if key and outfn then
+		if key and consumerfnp (outfn) then
 			rf = outfn:next (nil, key)		-- nextvarをセットする必要はない
 		end
 	end
@@ -6013,7 +6013,7 @@ function op_pickoff (outfn, db, key)
 			kt.log ("error", "removing a record failed")
 			return kt.RVEINTERNAL
 		end
-		if key and obj and outfn then
+		if key and obj and consumerfnp (outfn) then
 			rf = outfn:next (nil, obj)		-- nextvarをセットする必要はない
 		end
 	end
@@ -6034,7 +6034,7 @@ function op_key_get (outfn, db, key)
 			if xt and xt < xtmax then
 				obj.xt = xt - os.time ()
 			end
-			if outfn then
+			if consumerfnp (outfn) then
 				rf = outfn:next (key, obj)
 			end
 		end
@@ -6056,7 +6056,7 @@ end
 
 function getandmap (keyattr, outfn, key, val)
 	if val then
-		if outfn then
+		if consumerfnp (outfn) then
 			local obj = kt.mapload (val)
 			obj[keyattr] = key
 			obj[mType] = kTable
@@ -6255,7 +6255,7 @@ function op_newserial (outfn, key)
 		return kt.RVEINVALID
 	end
 	local rf = true
-	if outfn then
+	if consumerfnp (outfn) then
 		rf = outfn:next (nil, val)
 	end
 	return kt.RVSUCCESS, rf
@@ -6272,7 +6272,7 @@ function op_lastserial (outfn, key)
 	if not val then
 		return kt.RVEINVALID
 	end
-	if outfn then
+	if consumerfnp (outfn) then
 		rf = outfn:next (nil, val)
 	end
 	return kt.RVSUCCESS, rf
@@ -6300,7 +6300,7 @@ function op_serial_get (outfn, key)
 	local value = serialdb:get (key)
 	if value and string.len (value) == 8 then
 		value = unpackint64 (value)
-		if outfn then
+		if consumerfnp (outfn) then
 			rc = outfn:next (nil, value)
 		end
 	else
@@ -6347,7 +6347,7 @@ function op_serial_dump (outfn, nodb)
 	end
 	cur:disable ()
 	serialdb:end_transaction ()
-	if outfn then
+	if consumerfnp (outfn) then
 		rc = outfn:next (nil, obj)
 	end
 	return kt.RVSUCCESS, rc
@@ -6415,7 +6415,7 @@ function op_pushmsg (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 		return kt.RVEINTERNAL
 	end
 	local rf = true
-	if outfn then
+	if consumerfnp (outfn) then
 		rf = outfn:next (nil, ikey)
 	end
 	return kt.RVSUCCESS, rf
@@ -6466,7 +6466,7 @@ function op_popmsg (outfn, db, key)
 		kt.log ("error", "updating the queue failed")
 		return kt.RVEINTERNAL
 	end
-	if outfn then
+	if consumerfnp (outfn) then
 		rf = outfn:next (key, obj)
 	end
 	return kt.RVSUCCESS, rf
@@ -6541,7 +6541,7 @@ function op_schema (outfn)
 	-- SID
 	ans.sid = tostring (kt.sid)
 	local rf = true
-	if outfn then
+	if consumerfnp (outfn) then
 		rf = outfn:next1 (ans)
 	end
 	return kt.RVSUCCESS, rf
