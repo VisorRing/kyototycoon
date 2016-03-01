@@ -4178,7 +4178,7 @@ function cexpr_conproc (cmd, env)
 								local localenv = {}
 								-- このPROCESSORが繰り返し呼ばれた時、ローカル変数を初期化しなければならない。
 								for k, v in pairs (vars) do
-									localenv[k] = safenil (evalExpr (v))
+									localenv[k] = safenil (evalExpr (v, env))
 								end
 								if DEBUG then debugLogLocalVar (vars, localenv) end
 								return pushEnv (localenv, env,
@@ -4279,7 +4279,7 @@ function cexpr_local_var (cmd, env)
 						{},
 						function ()
 							for k, v in pairs (vars) do
-								env[#env][k] = safenil (evalExpr (v))
+								env[#env][k] = safenil (evalExpr (v, env))
 							end
 							if DEBUG then debugLogLocalVar (vars, env[#env]) end
 							return true
@@ -4304,7 +4304,7 @@ function cexpr_local_e_var (cmd, env)
 						{},
 						function ()
 							for k, v in pairs (vars) do
-								env[#env][k] = safenil (evalExpr (v))
+								env[#env][k] = safenil (evalExpr (v, env))
 							end
 							if DEBUG then debugLogLocalVar (vars, env[#env]) end
 							return true
@@ -4925,13 +4925,9 @@ end
 function evalVector (e, env)
 	local ans = {[mType] = kVector}
 	for i, v in ipairs (e) do
-		if consp (v) then
-			-- リテラル内の関数の実行は安全でない
-			ans[i] = safenil (v)
-		else
-			-- 要素内のベクタ、テーブルの展開は行わない
-			ans[i] = safenil (evalExpr (v, env))
-		end
+		-- リテラル内の関数の実行には注意が必要
+		-- 要素内のベクタ、テーブルの展開は行わない
+		ans[i] = safenil (evalExpr (v, env))
 	end
 	return ans
 end
@@ -4948,13 +4944,9 @@ function evalTable (e, env)
 	local ans = {[mType] = kTable}
 	for k, v in pairs (e) do
 		if string.sub (k, 1, 1) ~= kEVarPrefixCh then
-			if consp (v) then
-				-- リテラル内の関数の実行は安全でない
-				ans[k] = safenil (v)
-			else
-				-- 要素内のベクタ、テーブルの展開は行わない
-				ans[k] = safenil (evalExpr (v, env))
-			end
+			-- リテラル内の関数の実行には注意が必要
+			-- 要素内のベクタ、テーブルの展開は行わない
+			ans[k] = safenil (evalExpr (v, env))
 		end
 	end
 	return ans
