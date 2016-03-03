@@ -4127,7 +4127,7 @@ function debugLogLocalVar (vars, env)
 end
 
 function cexpr_conproc (cmd, env)
-	-- (conproc :var VARDEF :e-var VARDEF :break-if EXPR #break-if-limit PROCESSOR ...)
+	-- (conproc :var VARDEF :e-var VARDEF :break-if EXPR :on-break EXPR #break-if-limit PROCESSOR #true #false ...)
 	-- VARDEF ::= VAR
 	-- VARDEF ::= (VAR ...)
 	-- VARDEF ::= [VAR ...]
@@ -4154,6 +4154,7 @@ function cexpr_conproc (cmd, env)
 		end
 	end
 	local breakif = kwenv["break-if"]
+	local breakiflimit = checkBool (kwenv["break-if-limit"])
 
 	local onbreak
 	if consumerfnp (kwenv["on-break"]) then
@@ -4203,7 +4204,7 @@ function cexpr_conproc (cmd, env)
 															end
 															break
 														end
-														if checkBool (kwenv["break-if-limit"]) and not rc then
+														if breakiflimit and not rc then
 															if onbreak then
 																if DEBUG then debugLog ("on-break") end
 																onbreak:next (key, val)
@@ -4213,7 +4214,7 @@ function cexpr_conproc (cmd, env)
 													end
 												end
 												if DEBUG then debugLog ("conproc end", -1) end
-												return not kwenv["break-if-limit"] or rc
+												return procVal (not breakiflimit or rc, kwenv)
 											end
 										)
 							end)
@@ -4244,7 +4245,7 @@ function cexpr_conproc (cmd, env)
 											end
 											break
 										end
-										if checkBool (kwenv["break-if-limit"]) and not rc then
+										if breakiflimit and not rc then
 											if onbreak then
 												if DEBUG then debugLog ("on-break") end
 												onbreak:next (key, val)
@@ -4254,7 +4255,7 @@ function cexpr_conproc (cmd, env)
 									end
 								end
 								if DEBUG then debugLog ("conproc end", -1) end
-								return not kwenv["break-if-limit"] or rc
+								return procVal (not breakiflimit or rc, kwenv)
 							end)
 	end
 end
@@ -4312,10 +4313,12 @@ function cexpr_local_e_var (cmd, env)
 end
 
 function cexpr_conproc_vector_each (cmd, env)
-	-- (conproc-vector-each VAR EXPR_VECTOR #break-if-limit PROCESSOR ...) -> PROCESSOR
+	-- (conproc-vector-each VAR EXPR_VECTOR #break-if-limit PROCESSOR #true #false ...) -> PROCESSOR
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
 										{["break-if-limit"] = true;
+										 ["true"] = true;
+										 ["false"] = true;
 										},
 									kwenv)
 
@@ -4336,6 +4339,7 @@ function cexpr_conproc_vector_each (cmd, env)
 			table.insert (proc, p)
 		end
 	end
+	local breakiflimit = checkBool (kwenv["break-if-limit"])
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4349,7 +4353,7 @@ function cexpr_conproc_vector_each (cmd, env)
 												local vec2 = evalExpr (vec, env)
 												if nullp (vec2) and not vectorp (vec2) then
 													if DEBUG then debugLog ("conproc-vector-each end", -1) end
-													return rc
+													return procVal (rc, kwenv)
 												end
 												for i, v in ipairs (vec2) do
 													if var ~= "" then
@@ -4360,23 +4364,25 @@ function cexpr_conproc_vector_each (cmd, env)
 														rc = p:next (nil, v)
 														-- limitで中断する
 														if DEBUG then debugProcVal (rc) end
-														if checkBool (kwenv["break-if-limit"]) and not rc then
+														if breakiflimit and not rc then
 															if DEBUG then debugLog ("break") debugLog ("conproc-vector-each end", -1) end
-															return rc
+															return procVal (not breakiflimit or rc, kwenv)
 														end
 													end
 												end
 												if DEBUG then debugLog ("conproc-vector-each end", -1) end
-												return true
+												return procVal (not breakiflimit or rc, kwenv)
 											end)
 						end)
 end
 
 function cexpr_conproc_table_each (cmd, env)
-	-- (conproc-table-each VAR_KEY VAR_VAL EXPR_TABLE #break-if-limit PROCESSOR ...) -> PROCESSOR
+	-- (conproc-table-each VAR_KEY VAR_VAL EXPR_TABLE #break-if-limit PROCESSOR #true #false ...) -> PROCESSOR
 	local params, kwenv
 	params, kwenv = readParams (cmd, env,
 										{["break-if-limit"] = true;
+										 ["true"] = true;
+										 ["false"] = true;
 										},
 									kwenv)
 
@@ -4399,6 +4405,7 @@ function cexpr_conproc_table_each (cmd, env)
 			table.insert (proc, p)
 		end
 	end
+	local breakiflimit = checkBool (kwenv["break-if-limit"])
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4410,7 +4417,9 @@ function cexpr_conproc_table_each (cmd, env)
 												local rc = true
 												if DEBUG then debugLog ("conproc-table-each begin", 1) end
 												local tbl2 = evalExpr (tbl, env)
-												if nullp (tbl2) or not tablep (tbl2) then return rc end
+												if nullp (tbl2) or not tablep (tbl2) then
+													return procVal (rc, kwenv)
+												end
 												for k, v in pairs (tbl2) do
 													if string.sub (k, 1, 1) ~= kEVarPrefixCh then
 														if varkey ~= "" then
@@ -4424,15 +4433,15 @@ function cexpr_conproc_table_each (cmd, env)
 															rc = p:next (nil, v)
 															-- limitで中断する
 															if DEBUG then debugProcVal (rc) end
-															if checkBool (kwenv["break-if-limit"]) and not rc then
+															if breakiflimit and not rc then
 																if DEBUG then debugLog ("break") debugLog ("conproc-table-each end", -1) end
-																return rc
+																return procVal (not breakiflimit or rc, kwenv)
 															end
 														end
 													end
 												end
 												if DEBUG then debugLog ("conproc-table-each end", -1) end
-												return true
+												return procVal (not breakiflimit or rc, kwenv)
 											end)
 						end)
 end
@@ -4754,15 +4763,15 @@ optable = {
 		["popmsg"] = cexpr_popmsg;
 --DOC:| coneval | ('''coneval''' ''EXPR''...) -> ''PROCESSOR'' |''EXPR''を実行するconcurrentファンクションを出力する。|
 		["coneval"] = cexpr_coneval;
---DOC:| conproc | ('''conproc''' ''':var''' ''VARDEF'' ''':e-var''' ''VARDEF'' ''':break-if''' ''EXPR_BOOL'' ''':on-break''' ''PROCESSOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR''...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
+--DOC:| conproc | ('''conproc''' ''':var''' ''VARDEF'' ''':e-var''' ''VARDEF'' ''':break-if''' ''EXPR_BOOL'' ''':on-break''' ''PROCESSOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR'' ...) -> ''PROCESSOR'' |PROCESSORを全て評価し、連続して実行するconcurrentファンクションを出力する。:varオプション、:e-varオプションで、変数名、変数名のリストを指定すると、ローカル変数として、変数、E変数を隔離する。:varオプション、e-var:オプションを指定しないと、ローカル環境を作らない。:break-ifオプションで指定した''EXPR''を各リストの実行に先立って実行し、成立したらリストの実行を中断する。|
 		["conproc"] = cexpr_conproc;
 --DOC:| local-var | ('''local-var''' ''VARDEF'') -> ''PROCESSOR'' | ローカル変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
 		["local-var"] = cexpr_local_var;
 --DOC:| local-e-var | ('''local-e-var''' ''VARDEF'') -> ''PROCESSOR'' | ローカルのE変数の定義。直前のローカル環境を作るconcurrentファンクションの環境内に変数を定義する。|
 		["local-e-var"] = cexpr_local_e_var;
---DOC:| conproc-vector-each | ('''conproc-vector-each''' ''VAR'' ''EXPR_VECTOR'' '''#break-if-limit''' ''PROCESSOR''...) -> ''PROCESSOR''|''EXPR_VECTOR''の各要素を変数''VAR''に保存して、''PROCESSOR''を実行するconcurrentファンクションを出力する。|
+--DOC:| conproc-vector-each | ('''conproc-vector-each''' ''VAR'' ''EXPR_VECTOR'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR'' ...) -> ''PROCESSOR''|''EXPR_VECTOR''の各要素を変数''VAR''に保存して、''PROCESSOR''を実行するconcurrentファンクションを出力する。|
 		["conproc-vector-each"] = cexpr_conproc_vector_each;
---DOC:| conproc-table-each | ('''conproc-table-each''' ''VAR_KEY'' ''VAR_VAL'' ''EXPR_TABLE'' '''#break-if-limit''' ''PROCESSOR''...) -> ''PROCESSOR''|''EXPR_TABLE''の各要素を変数''VAR''に保存して、''PROCESSOR''を実行するconcurrentファンクションを出力する。|
+--DOC:| conproc-table-each | ('''conproc-table-each''' ''VAR_KEY'' ''VAR_VAL'' ''EXPR_TABLE'' '''#break-if-limit''' '''#true''' '''#false''' ''PROCESSOR'' ...) -> ''PROCESSOR''|''EXPR_TABLE''の各要素を変数''VAR''に保存して、''PROCESSOR''を実行するconcurrentファンクションを出力する。|
 		["conproc-table-each"] = cexpr_conproc_table_each;
 }
 
