@@ -14,7 +14,7 @@ if kt then
 	sid_len = string.len (sid)
 	optable = nil
 end
--- DEBUG = true
+DEBUG = true
 local xtmax = 8589934592
 local kNUL = "\x00"
 local kFF = "\xff"
@@ -58,7 +58,7 @@ function texp (text)
 		elseif w == "'" then
 			return texp_3 (text)
 		else
-			return nil	-- error
+			return {}	-- error
 		end
 	end
 	function texp_2 (text)	-- '('...
@@ -95,7 +95,7 @@ function texp (text)
 						break
 					elseif w == ")" then
 						if nullp (ans) then
-							return nil, text
+							return {}, text
 						else
 							return ans, text
 						end
@@ -119,7 +119,7 @@ function texp (text)
 			end
 		end
 		if nullp (ans) then
-			return nil, text
+			return {}, text
 		else
 			return ans, text
 		end
@@ -135,7 +135,7 @@ function texp (text)
 			local  t, w
 			t, w, text = lex (text)
 			if not t then
-				return nil				-- error
+				return {}				-- error
 			elseif t == kPunctuation then
 				if w == "]" then
 					return ans, text
@@ -156,26 +156,26 @@ function texp (text)
 			local  t, w
 			t, w, text = lex (text)
 			if not t then
-				return nil				-- error
+				return {}				-- error
 			elseif t == kPunctuation then
 				if w == "}" then
 					return ans, text
 				elseif w == "," then
 				else
-					return nil		-- error
+					return {}		-- error
 				end
 			elseif t == kSymbol or t == kString then
 				local t0, w0
 				t0, w0, text = lex (text)
 				if (t0 == kPunctuation or t0 == kSymbol) and w0 == "=>" then
 				else
-					return nil			-- error
+					return {}			-- error
 				end
 				local w2
 				w2, text = texp (text)
 				ans[w] = safenil (w2)
 			else
-				return nil				-- error
+				return {}				-- error
 			end
 		end
 	end
@@ -183,7 +183,7 @@ function texp (text)
 	local t, w
 	t, w, text = lex (text)
 	if not t then
-		return nil			-- error
+		return {}			-- error
 	elseif t == kPunctuation then
 		return texp_1 (w, text)
 	elseif t == kSymbol then
@@ -253,10 +253,10 @@ function lex (text)			--> (Type, Obj); Type = kNumber/kString/kBoolean/kSymbol/k
 					-- symbol
 					s = string.sub (text, s, e)
 					text = string.sub (text, e + 1)
-					if s == "true" then
+					if s == "true" then					-- trueはBoolean
 						return kBoolean, true, text
-					elseif s == "false" then
-						return kBoolean, false, text
+--					elseif s == "false" then			-- falseではなく nilをつかう
+--						return kBoolean, false, text
 					else
 						return kSymbol, s, text
 					end
@@ -523,7 +523,7 @@ function texpdump (e)	-- => STRING
 		return tostring (e)
 	elseif t == "string" then
 		return describe (e)
-	elseif t == "boolean" then
+	elseif t == "boolean" then		-- trueはBoolean
 		return tostring (e)
 	elseif t == "table" then
 		t = e[mType]
@@ -1234,9 +1234,9 @@ function procVal (rc, kwenv)
 	if kwenv["true"] then
 		return true
 	elseif kwenv["false"] then
-		return false
+		return {}
 	else
-		return rc
+		return safenil (rc)
 	end
 end
 
@@ -1389,10 +1389,16 @@ function readParams (cmd, env, kwlist, kwparam)
 	return ans.cdr, kwparam
 end
 
+function bnot (e)
+	if checkBool (e) then return {}
+	else return true
+	end
+end
+
 function expr_cons (cmd, env)
 	-- (cons OBJ OBJ) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans = {}
 	ans.car = evalExpr (e.car, env)
 	e = e.cdr
@@ -1400,7 +1406,7 @@ function expr_cons (cmd, env)
 		ans.cdr = evalExpr (e.car, env)
 		e = e.cdr
 	end
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return ans
 end
@@ -1408,13 +1414,13 @@ end
 function expr_nth (cmd, env)
 	-- (nth NUM LIST) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local n = t_to_number (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local obj = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	while n > 0 and consp (obj) do
 		obj = obj.cdr
@@ -1423,7 +1429,7 @@ function expr_nth (cmd, env)
 	if consp (obj) then
 		return obj.car
 	else
-		return nil
+		return {}
 	end
 end
 
@@ -1474,10 +1480,10 @@ end
 function expr_to_string (cmd, env)
 	-- (to-string EXPR) -> STRING
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return t_to_string (a)
 end
@@ -1485,10 +1491,10 @@ end
 function expr_to_number (cmd, env)
 	-- (to-number EXPR) -> NUMBER
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return t_to_number (a)
 end
@@ -1499,35 +1505,35 @@ function expr_quote (cmd, env)
 	if consp (e) then
 		return e.car
 	else
-		return nil
+		return {}
 	end
 end
 
 function expr_read_texp (cmd, env)
 	-- (read-sexp TEXT) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	if type (a) == "string" then
 		return texp (a)
 	elseif nullp (a) then
-		return nil
+		return {}
 	else
 		writeFnError (env, cmd, a, typeError)
 	end
-	return nil
+	return {}
 end
 
 function expr_dump_to_texp (cmd, env)
 	-- (dump-to-sexp OBJ) -> TEXT
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return texpdump (a)
 end
@@ -1535,16 +1541,16 @@ end
 function expr_nop (fn, cmd, env)
 	-- (fn NUMBER ...)
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans, a
 	ans = tonumber (evalExpr (e.car, env))
 	e = e.cdr
-	if nullp (ans) then return nil end
+	if nullp (ans) then return {} end
 	while consp (e) do
 		a = tonumber (evalExpr (e.car, env))
 		e = e.cdr
 		if nullp (a) then
-			return nil
+			return {}
 		end
 		ans = fn (ans, a)
 	end
@@ -1579,18 +1585,18 @@ end
 function expr_ncmp (fn, cmd, env)
 	-- (fn NUMBER NUMBER)
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans, a
 	ans = tonumber (evalExpr (e.car, env))
 	e = e.cdr
-	if nullp (ans) then return nil end
+	if nullp (ans) then return {} end
 	while consp (e) do
 		a = tonumber (evalExpr (e.car, env))
 		e = e.cdr
 		if nullp (a) then
-			return nil
+			return {}
 		end
-		if not fn (ans, a) then return false end
+		if not fn (ans, a) then return {} end
 		ans = a
 	end
 	return true
@@ -1624,19 +1630,19 @@ end
 function expr_notnequal (cmd, env)
 	-- (!= NUMBER NUMBER ...) -> BOOL
 	local a = expr_nequal (cmd, env)
-	return not a
+	return bnot (a)
 end
 
 function expr_cmp (fn, cmd, env)
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
 	local a
 	while consp (e) do
 		a = t_to_string (evalExpr (e.car, env))
 		e = e.cdr
-		if not fn (ans, a) then return false end
+		if not fn (ans, a) then return {} end
 		ans = a
 	end
 	return true
@@ -1669,23 +1675,23 @@ end
 
 function expr_notstreq (cmd, env)
 	-- (neq STRING STRING ...) -> BOOL
-	return not expr_streq (cmd, env)
+	return bnot (expr_streq (cmd, env))
 end
 
 function expr_eq (cmd, env)
 	-- (== OBJ OBJ ...) -> BOOL
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans = evalExpr (e.car, env)
 	e = e.cdr
-	if nullp (ans) then ans = nil end
+	if nullp (ans) then ans = {} end
 	local a
 	while consp (e) do
 		a = evalExpr (e.car, env)
 		e = e.cdr
-		if nullp (a) then a = nil end
-		if ans ~= a then return false end
+		if nullp (a) then a = {} end
+		if ans ~= a then return {} end
 	end
 
 	return true
@@ -1695,16 +1701,16 @@ function expr_equal (cmd, env)
 	-- (equal OBJ OBJ ...) -> BOOL
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans = evalExpr (e.car, env)
 	e = e.cdr
-	if nullp (ans) then ans = nil end
+	if nullp (ans) then ans = {} end
 	local a
 	while consp (e) do
 		a = evalExpr (e.car, env)
 		e = e.cdr
-		if nullp (a) then a = nil end
-		if not equal (ans, a) then return false end
+		if nullp (a) then a = {} end
+		if not equal (ans, a) then return {} end
 	end
 
 	return true
@@ -1713,13 +1719,13 @@ end
 function expr_neq (cmd, env)
 	-- (!== OBJ OBJ ...) -> BOOL
 	local a = expr_eq (cmd, env)
-	return not a
+	return bnot (a)
 end
 
 function expr_notequal (cmd, env)
 	-- (nequal OBJ OBJ ...) -> BOOL
 	local a = expr_equal (cmd, env)
-	return not a
+	return bnot (a)
 end
 
 function expr_and (cmd, env)
@@ -1731,7 +1737,7 @@ function expr_and (cmd, env)
 		a = evalExpr (e.car, env)
 		e = e.cdr
 		if not checkBool (a) then
-			return false
+			return {}
 		end
 	end
 
@@ -1751,17 +1757,17 @@ function expr_or (cmd, env)
 		end
 	end
 
-	return false
+	return {}
 end
 
 function expr_not (cmd, env)
 	-- (not BOOL) -> BOOL
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 
-	return not checkBool (a)
+	return bnot (checkBool (a))
 end
 
 function expr_nullp (cmd, env)
@@ -1773,7 +1779,7 @@ function expr_nullp (cmd, env)
 		a = evalExpr (e.car, env)
 		e = e.cdr
 		if not nullp (a) then
-			return false
+			return {}
 		end
 	end
 	return true
@@ -1788,7 +1794,7 @@ function expr_not_nullp (cmd, env)
 		a = evalExpr (e.car, env)
 		e = e.cdr
 		if nullp (a) then
-			return false
+			return {}
 		end
 	end
 	return true
@@ -1803,7 +1809,7 @@ function expr_emptyp (cmd, env)
 		a = evalExpr (e.car, env)
 		e = e.cdr
 		if not (nullp (a) or a == "") then
-			return false
+			return {}
 		end
 	end
 	return true
@@ -1818,7 +1824,7 @@ function expr_not_emptyp (cmd, env)
 		a = evalExpr (e.car, env)
 		e = e.cdr
 		if nullp (a) or a == "" then
-			return false
+			return {}
 		end
 	end
 	return true
@@ -1843,25 +1849,60 @@ function expr_substr (cmd, env)
 	local e = cmd.cdr
 	local text, start, len
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	text = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	start = evalExpr (e.car, env)
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+	start = tonumber (evalExpr (e.car, env))
 	e = e.cdr	
 	if consp (e) then
-		len = evalExpr (e.car, env)
+		len = tonumber (evalExpr (e.car, env))
 		e = e.cdr
 	end
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if type (text) ~= "string" then writeFnError (env, cmd, text, typeError) return nil end
-	if type (start) ~= "number" then writeFnError (env, cmd, start, typeError) return nil end
+	if type (text) ~= "string" then writeFnError (env, cmd, text, typeError) return {} end
+	if type (start) ~= "number" then writeFnError (env, cmd, start, typeError) return {} end
 	if len then
-		if type (len) ~= "number" then writeFnError (env, cmd, len, typeError) return nil end
-		return string.sub (text, start + 1, start + len)
+		if type (len) ~= "number" then writeFnError (env, cmd, len, typeError) return {} end
+		local n = start + len
+		if start < 0 then start = 0 end
+		if n < 0 then n = 0 end
+		return string.sub (text, start + 1, n)
 	else
+		if start < 0 then start = 0 end
 		return string.sub (text, start + 1)
+	end
+end
+
+function expr_tailstr (cmd, env)
+	-- (tailstr STRING START [LENGTH]) -> STRING
+	local e = cmd.cdr
+	local text, start, len
+
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+	text = evalExpr (e.car, env)
+	e = e.cdr
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+	start = tonumber (evalExpr (e.car, env))
+	e = e.cdr	
+	if consp (e) then
+		len = tonumber (evalExpr (e.car, env))
+		e = e.cdr
+	end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+
+	if type (text) ~= "string" then writeFnError (env, cmd, text, typeError) return {} end
+	if type (start) ~= "number" then writeFnError (env, cmd, start, typeError) return {} end
+	local n = string.len (text) - start
+	if n < 0 then n = 0 end
+	if len then
+		if type (len) ~= "number" then writeFnError (env, cmd, len, typeError) return {} end
+		local s = n - len + 1
+		if s < 1 then s = 1 end
+		return string.sub (text, s, n)
+	else
+		return string.sub (text, 1, n)
 	end
 end
 
@@ -1870,10 +1911,10 @@ function expr_strlen (cmd, env)
 	local e = cmd.cdr
 	local text
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	text = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return string.len (text)
 end
@@ -1883,13 +1924,13 @@ function expr_regexp_match (cmd, env)
 	local e = cmd.cdr
 	local pat, text
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	pat = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	text = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return kt.regex (text, pat)
 end
@@ -1899,13 +1940,13 @@ function expr_split_char (cmd, env)
 	local e = cmd.cdr
 	local text, ch
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	text = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	ch = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	local  ans = {[mType] = kVector}
 	if (string.len (ch) > 0) then
@@ -1955,10 +1996,10 @@ function expr_reverse (cmd, env)
 	-- (reverse LIST) -> LIST
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local a = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	local t = type (a)
 	if t == "table" then
@@ -1992,17 +2033,17 @@ end
 function expr_vector_get (cmd, env)
 	-- (vector-get VECTOR INDEX) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local idx = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
-	if type (idx) ~= "number" then writeFnError (env, cmd, idx, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
+	if type (idx) ~= "number" then writeFnError (env, cmd, idx, typeError) return {} end
 
 	return vec[idx + 1]
 end
@@ -2010,13 +2051,13 @@ end
 function expr_vector_back (cmd, env)
 	-- (vector-back VECTOR) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	return vec[#vec]
 end
@@ -2025,19 +2066,19 @@ function expr_vector_put (cmd, env)
 	-- (vector-put VECTOR INDEX OBJ) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local idx = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local val = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
-	if type (idx) ~= "number" then writeFnError (env, cmd, idx, typeError) return nil end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
+	if type (idx) ~= "number" then writeFnError (env, cmd, idx, typeError) return {} end
 
 	vectorPut (vec, idx, val)
 
@@ -2047,10 +2088,10 @@ end
 function expr_vector_del (cmd, env)
 	-- (vector-del VECTOR INDEX_FROM [INDEX_TO]) -> OBJ
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local idxfrom = evalExpr (e.car, env)
 	e = e.cdr
 	local idxto
@@ -2060,12 +2101,12 @@ function expr_vector_del (cmd, env)
 	else
 		idxto = idxfrom
 	end
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
-	if type (idxfrom) ~= "number" then writeFnError (env, cmd, idxfrom, typeError) return nil end
-	if type (idxto) ~= "number" then writeFnError (env, cmd, idxto, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
+	if type (idxfrom) ~= "number" then writeFnError (env, cmd, idxfrom, typeError) return {} end
+	if type (idxto) ~= "number" then writeFnError (env, cmd, idxto, typeError) return {} end
 	idxfrom = idxfrom + 1
 	idxto = idxto + 1
 	if idxfrom < 1 then idxfrom = 1 end
@@ -2081,15 +2122,15 @@ function expr_vector_push (cmd, env)
 	-- (vector-push VECTOR OBJ) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local val = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	if DEBUG then debugLog ("vector-push (" .. texpdump_short (vec) .. ", " .. texpdump (val) .. ")") end
 	table.insert (vec, safenil (val))
@@ -2101,14 +2142,14 @@ function expr_vector_pop (cmd, env)
 	-- (vector-pop VECTOR) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
-	if #vec == 0 then return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
+	if #vec == 0 then return {} end
 
 	if DEBUG then debugLog ("vector-pop (" .. texpdump_short (vec) .. ")") end
 	return table.remove (vec, #vec)
@@ -2118,13 +2159,13 @@ function expr_vector_size (cmd, env)
 	-- (vector-size VECTOR) -> SIZE
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	return #vec
 end
@@ -2133,17 +2174,17 @@ function expr_vector_append (cmd, env)
 	-- (vector-append VECTOR VECTOR ...) -> VECTOR
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
 
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	local a
 	while consp (e) do
 		a = evalExpr (e.car, env)
 		e = e.cdr
-		if not vectorp (a) then writeFnError (env, cmd, a, typeError) return nil end
+		if not vectorp (a) then writeFnError (env, cmd, a, typeError) return {} end
 		for i, v in ipairs (a) do
 			table.insert (vec, v)
 		end
@@ -2155,13 +2196,13 @@ function expr_vector_reverse (cmd, env)
 	-- (vector-reverse VECTOR) -> VECTOR
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	local ans = {[mType] = kVector}
 	local n = #vec + 1
@@ -2290,12 +2331,12 @@ function expr_vector_sort (cmd, env)
 											 text = true;
 											 col = true;
 											})
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (params.car, env)
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	local indexType
 	local index = {}
@@ -2377,13 +2418,13 @@ function expr_vector_to_list (cmd, env)
 	-- (vector-to-list VECTOR) -> LIST
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	local ans = {}
 	local c = ans
@@ -2399,13 +2440,13 @@ function expr_list_to_vector (cmd, env)
 	-- (list-to-vector VECTOR) -> LIST
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local list = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (list) then return nil end
-	if not consp (list) then writeFnError (env, cmd, list, typeError) return nil end
+	if nullp (list) then return {} end
+	if not consp (list) then writeFnError (env, cmd, list, typeError) return {} end
 
 	local ans = {[mType] = kVector}
 	while consp (list) do
@@ -2420,17 +2461,17 @@ function expr_table_get (cmd, env)
 	-- (table-get TABLE KEY) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (tbl) then return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
-	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return nil end
+	if nullp (tbl) then return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
+	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return {} end
 
 	return tbl[key]
 end
@@ -2439,20 +2480,20 @@ function expr_table_put (cmd, env)
 	-- (table-put TABLE KEY OBJ) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local val = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (tbl) then return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
-	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return nil end
+	if nullp (tbl) then return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
+	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return {} end
 
 	tbl[key] = safenil (val)		-- XXX nil対策
 
@@ -2463,17 +2504,17 @@ function expr_table_del (cmd, env)
 	-- (table-del TABLE KEY) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local key = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (tbl) then return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
-	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return nil end
+	if nullp (tbl) then return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
+	if type (key) ~= "string" then writeFnError (env, cmd, key, typeError) return {} end
 
 	local val = tbl[key]
 	tbl[key] = nil
@@ -2485,16 +2526,16 @@ function expr_table_append (cmd, env)
 	-- (table-append TABLE1 TABLE2 ...) -> TABLE1
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
 	local tbl2
 	while consp (e) do
 		tbl2 = evalExpr (e.car, env)
 		e = e.cdr
 		if not nullp (tbl2) then
-			if not tablep (tbl2) then writeFnError (env, cmd, tbl2, typeError) return nil end
+			if not tablep (tbl2) then writeFnError (env, cmd, tbl2, typeError) return {} end
 			for key, val in pairs (tbl2) do
 				if string.sub (key, 1, 1) ~= kEVarPrefixCh then
 					tbl[key] = val
@@ -2510,11 +2551,11 @@ function expr_table_keys (cmd, env)
 	-- (table-keys TABLE) -> VECTOR
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
 
 	local vec = {[mType] = kVector}
 	for k, v in pairs (tbl) do
@@ -2529,13 +2570,13 @@ function expr_table_to_list (cmd, env)
 	-- (table-to-list TABLE) -> LIST
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (tbl) then return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
+	if nullp (tbl) then return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
 
 	local ans = {}
 	local c = ans
@@ -2553,13 +2594,13 @@ function expr_list_to_table (cmd, env)
 	-- (list-to-table TABLE) -> LIST
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local list = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (list) then return nil end
-	if not consp (list) then writeFnError (env, cmd, list, typeError) return nil end
+	if nullp (list) then return {} end
+	if not consp (list) then writeFnError (env, cmd, list, typeError) return {} end
 
 	local ans = {[mType] = kTable}
 	local k, v
@@ -2598,7 +2639,7 @@ function expr_cond (cmd, env)
 			writeFnError (env, cmd, prog, typeError)
 		end
 	end
-	return nil
+	return {}
 end
 
 function setvar_proc (name, val, env, bindfn)
@@ -2654,7 +2695,7 @@ function expr_setvar (cmd, env)
 			val = evalExpr (e.car, env)
 			e = e.cdr
 		else
-			val = nil
+			val = {}
 		end
 		setvar_proc (name, val, env, bindSym)
 	end
@@ -2666,10 +2707,10 @@ function expr_getvar (cmd, env)
 	local params, kwenv = readParams (cmd, env,
 											{parent = true;
 											});
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local name = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
@@ -2697,7 +2738,7 @@ function expr_setevar (cmd, env)
 			val = evalExpr (e.car, env)
 			e = e.cdr
 		else
-			val = nil
+			val = {}
 		end
 		setvar_proc (name, val, env, function (x, y, e) bindSym (x, y, e, true) end)
 	end
@@ -2709,10 +2750,10 @@ function expr_getevar (cmd, env)
 	local params, kwenv = readParams (cmd, env,
 											{parent = true;
 											});
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local name = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
@@ -2744,8 +2785,8 @@ end
 function expr_lambda (cmd, env)
 	-- (lambda (PARAMS ...) FUNC ...) -> LAMBDA
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
-	if not nullp (e.car) and not consp (e.car) then writeFnError (env, cmd, e.car, typeError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
+	if not nullp (e.car) and not consp (e.car) then writeFnError (env, cmd, e.car, typeError) return {} end
 	return cmd
 end
 
@@ -2768,13 +2809,13 @@ function expr_apply (cmd, env)
 	-- (apply SYMBOL OBJ ... LIST) -> OBJ
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local ans = {}
 	local cons = ans
 	local a
 	ans.car = evalExpr (e.car, env)
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	while true do
 		a = evalExpr (e.car, env)
 		e = e.cdr
@@ -2792,20 +2833,20 @@ function expr_apply (cmd, env)
 			break
 		end
 	end
-	return evalFunc (ans, env)
+	return evalExpr (ans, env)
 end
 
 function expr_vector_each (cmd, env)
 	-- (vector-each VAR VECTOR EXPR ...) -> nil
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local var = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if not nullp (vec) and not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
-	if nullp (vec) then return nil end
+	if not nullp (vec) and not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
+	if nullp (vec) then return {} end
 
 	local prog = e
 	local ans
@@ -2831,17 +2872,17 @@ end
 function expr_table_each (cmd, env)
 	-- (table-each VAR_KEY VAR_VAL TABLE EXPR ...) -> nil
 	local e = cmd.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local varkey = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local varval = t_to_string (evalExpr (e.car, env))
 	e = e.cdr
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if not nullp (tbl) and not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
-	if nullp (tbl) then return nil end
+	if not nullp (tbl) and not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
+	if nullp (tbl) then return {} end
 
 	local prog = e
 	local ans
@@ -2885,20 +2926,20 @@ function expr_proc (cmd, env)
 	end
 
 	-- PROCESSORを実行済みなので、戻り値にPROCESSORを出力しない
-	return nil
+	return {}
 end
 
 function expr_vector_eval (cmd, env)
 	-- (vector-eval VECTOR) -> VECTOR
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (vec) then return nil end
-	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return nil end
+	if nullp (vec) then return {} end
+	if not vectorp (vec) then writeFnError (env, cmd, vec, typeError) return {} end
 
 	return evalVector (vec, env)
 end
@@ -2907,13 +2948,13 @@ function expr_table_eval (cmd, env)
 	-- (table-eval TABLE) -> TABLE
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = evalExpr (e.car, env)
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if nullp (tbl) then return nil end
-	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return nil end
+	if nullp (tbl) then return {} end
+	if not tablep (tbl) then writeFnError (env, cmd, tbl, typeError) return {} end
 
 	return evalTable (tbl, env)
 end
@@ -2922,15 +2963,15 @@ function expr_sleep (cmd, env)
 	-- (sleep SECOND) -> nil
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local sec = tonumber (evalExpr (e.car, env))
 	e = e.cdr
-	if consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	if sec then
 		kt.sleep (sec)
 	end
-	return nil
+	return {}
 end
 
 ------------------------------------------------------------
@@ -2947,7 +2988,7 @@ function cexpr_output (cmd, env)
 										 ["false"] = true;
 										},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local sel = {}
 	while consp (params) do
 		table.insert (sel, params.car)
@@ -3000,13 +3041,13 @@ function cexpr_output_table (cmd, env)
 										 ["false"] = true;
 										},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vkey
 	local kv = {}
 	while consp (params) do
 		vkey = params.car
 		params = params.cdr
-		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 		table.insert (kv, {vkey, params.car})
 		params = params.cdr
 	end
@@ -3064,10 +3105,10 @@ function cexpr_count (cmd, env)
 										 ["false"] = true;
 										},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local var = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	if not nullp (kwenv.every) then
 		kwenv.every = tonumber (kwenv.every)
@@ -3077,7 +3118,7 @@ function cexpr_count (cmd, env)
 			kwenv.residue = 1
 		end
 	end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -3119,13 +3160,13 @@ function op_cexpr_store (cmd, env, eflag)
 										 ["false"] = true;
 										},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vkey
 	local kv = {}
 	while consp (params) do
 		vkey = params.car
 		params = params.cdr
-		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+		if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 		table.insert (kv, {vkey, params.car})
 		params = params.cdr
 	end
@@ -3166,7 +3207,7 @@ function op_cexpr_undef (cmd, env, eflag)
 	params, kwenv = readParams (cmd, env,
 										{},
 									kwenv)
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -3214,12 +3255,12 @@ function cexpr_select (cmd, env)
 	else
 		cond = 1
 	end
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	filterOffset (kwenv)
 	filterLimit (kwenv)
-	if kwenv.proc and not consumerfnp (kwenv.proc) then writeFnError (env, cmd, kwenv.proc, typeError) return nil end
-	if kwenv["false-proc"] and not consumerfnp (kwenv["false-proc"]) then writeFnError (env, cmd, kwenv.proc, typeError) return nil end
+	if kwenv.proc and not consumerfnp (kwenv.proc) then writeFnError (env, cmd, kwenv.proc, typeError) return {} end
+	if kwenv["false-proc"] and not consumerfnp (kwenv["false-proc"]) then writeFnError (env, cmd, kwenv.proc, typeError) return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -3227,7 +3268,7 @@ function cexpr_select (cmd, env)
 						function (key, val)
 							local rc = true
 							if DEBUG then debugLog ("select", 1) end
-							if checkBool (evalFunc (cond, env)) then
+							if checkBool (evalExpr (cond, env)) then
 								if DEBUG then debugLog ("true") end
 								if not procOffset (kwenv, cmd) then
 									rc = procLimit (kwenv, cmd, key, env)
@@ -3287,33 +3328,33 @@ function cexpr_dbadd_op (op, cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	key = params.car
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	val = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if kwenv.unique and not vectorp (kwenv.unique) then writeFnError (env, cmd, kwenv.unique, typeError) return nil end
+	if kwenv.unique and not vectorp (kwenv.unique) then writeFnError (env, cmd, kwenv.unique, typeError) return {} end
 --	if kwenv["unique-replace"] then
---		if not vectorp (kwenv["unique-replace"]) then writeFnError (env, cmd, kwenv["unique-replace"], typeError) return nil end
+--		if not vectorp (kwenv["unique-replace"]) then writeFnError (env, cmd, kwenv["unique-replace"], typeError) return {} end
 --		kwenv.unique = kwenv["unique-replace"]
 --		kwenv.uniquereplace = true
 --	end
 	kwenv.xt = to_number_opt (kwenv.xt)
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vkey = to_string_opt (evalFunc (key, env))
+							local vkey = to_string_opt (evalExpr (key, env))
 							local vval = evalVTF (val, env)
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": " .. describe (vkey), 1) end
 							local st, rc = op (kwenv.proc, db, vkey, vval, kwenv.xt, kwenv.unique, env, cmd)
@@ -3351,33 +3392,33 @@ function cexpr_increment_op (op, cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	key = params.car
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = params.car
 	params = params.cdr
 	if consp (params) then 
 		delta = params.car
 		params = params.cdr
 	end
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	kwenv.xt = to_number_opt (kwenv.xt)
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vkey = to_string_opt (evalFunc (key, env))
-							local vattr = to_string_opt (evalFunc (attr, env))
-							local vdelta = to_number_opt (evalFunc (delta, env))
+							local vkey = to_string_opt (evalExpr (key, env))
+							local vattr = to_string_opt (evalExpr (attr, env))
+							local vdelta = to_number_opt (evalExpr (delta, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": key=" .. describe (vkey) .. ", attr=" .. describe (vattr) .. ", delta=" .. describe (vdelta), 1) end
 							local st, rc = op (kwenv.proc, db, vkey, vattr, vdelta, kwenv.xt)
 							if DEBUG then debugProcVal (rc, -1) end
@@ -3408,22 +3449,22 @@ function cexpr_del (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	key = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vkey = to_string_opt (evalFunc (key, env))
+							local vkey = to_string_opt (evalExpr (key, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": key=" .. describe (vkey), 1) end
 							local st, rc = op_dbdel (kwenv.proc, db, vkey, nil)
 							if DEBUG then debugProcVal (rc, -1) end
@@ -3447,18 +3488,18 @@ function cexpr_index_iterate_del (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = evalExpr (params.car, env)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	val = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 	if stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
@@ -3470,7 +3511,7 @@ function cexpr_index_iterate_del (cmd, env)
 	else
 		writeFnError (env, cmd, attr, typeError)
 	end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 
 	return ConsumerStarter.new (
@@ -3504,23 +3545,23 @@ function cexpr_key_get_op (op, cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	key = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function (k, v)
-							local vkey = to_string_opt (evalFunc (key, env))
+							local vkey = to_string_opt (evalExpr (key, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": key=" .. describe (vkey), 1) end
 							local rc = procLimit (kwenv, cmd, k, env)
 							if kwenv._procbreak then
@@ -3561,13 +3602,13 @@ function cexpr_key_iterate (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 	if checkBool (kwenv.desc) then op = op_key_iterate_desc else op = op_key_iterate end
 
@@ -3576,7 +3617,7 @@ function cexpr_key_iterate (cmd, env)
 						kwenv,
 						function (key, val)
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car), 1) end
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
 							local st, rc = op (kwenv.proc, db, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rc, -1) end
 							return procVal (rc, kwenv)
@@ -3596,18 +3637,18 @@ function cexpr_index_get (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = evalExpr (params.car, env)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attrval = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 	if stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
@@ -3620,7 +3661,7 @@ function cexpr_index_get (cmd, env)
 	else
 		writeFnError (env, cmd, attr, typeError)
 	end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]."..t_to_string (cmd.car),
@@ -3630,7 +3671,7 @@ function cexpr_index_get (cmd, env)
 							if not vectorp (vval) then
 								vval = {vval; [mType] = kVector}
 							end
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", val=" .. texpdump (vval), 1) end
 							local st, rc = op_index_get (kwenv.proc, db, attr, vval, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rc, -1) end
@@ -3655,18 +3696,18 @@ function cexpr_index_iterate_op (op_asc, op_desc, cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = evalExpr (params.car, env)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attrval = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 	if stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
@@ -3679,7 +3720,7 @@ function cexpr_index_iterate_op (op_asc, op_desc, cmd, env)
 	else
 		writeFnError (env, cmd, attr, typeError)
 	end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 	if checkBool (kwenv.desc) then op = op_desc else op = op_asc end
 
@@ -3691,7 +3732,7 @@ function cexpr_index_iterate_op (op_asc, op_desc, cmd, env)
 							if not vectorp (vval) then
 								vval = {vval; [mType] = kVector}
 							end
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", val=" .. texpdump (vval), 1) end
 							local st, rc = op (kwenv.proc, db, attr, vval, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rc, -1) end
@@ -3721,16 +3762,16 @@ function cexpr_key_prefix (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	val = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 	if checkBool (kwenv.desc) then op = op_key_prefix_desc else op = op_key_prefix end
 
@@ -3738,8 +3779,8 @@ function cexpr_key_prefix (cmd, env)
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
-							local vval = to_string_opt (evalFunc (val, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
+							local vval = to_string_opt (evalExpr (val, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": ...", 1) end
 							local st, rc = op (kwenv.proc, db, vval, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rc, -1) end
@@ -3769,19 +3810,19 @@ function cexpr_key_range (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	vala = params.car
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	valb = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if not db then return {} end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 	if checkBool (kwenv.desc) then op = op_key_range_desc else op = op_key_range end
 
@@ -3789,9 +3830,9 @@ function cexpr_key_range (cmd, env)
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vvala = to_numstr_opt (evalFunc (vala, env))
-							local vvalb = to_numstr_opt (evalFunc (valb, env))
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							local vvala = to_numstr_opt (evalExpr (vala, env))
+							local vvalb = to_numstr_opt (evalExpr (valb, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
 							if vstart then vvala = vstart end
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": vala=" .. texpdump (vvala) .. ", valb=" .. texpdump (vvalb), 1) end
 							local rc, rf = op (kwenv.proc, db, vvala, vvalb, cmd, env, kwenv)
@@ -3817,21 +3858,21 @@ function cexpr_index_range (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = evalExpr (params.car, env)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	vala = params.car
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	valb = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 	if stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
@@ -3843,7 +3884,7 @@ function cexpr_index_range (cmd, env)
 	else
 		writeFnError (env, cmd, attr, typeError)
 	end
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 	filterLimit (kwenv)
 	if checkBool (kwenv.desc) then op = op_index_range_desc else op = op_index_range end
 
@@ -3859,7 +3900,7 @@ function cexpr_index_range (cmd, env)
 							if not vectorp (vvalb) then
 								vvalb = {vvalb; [mType] = kVector}
 							end
-							local vstart = to_string_opt (evalFunc (kwenv.start, env))
+							local vstart = to_string_opt (evalExpr (kwenv.start, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": attr=" .. texpdump (attr) .. ", vala=" .. texpdump (vvala) .. ", valb=" .. texpdump (vvalb), 1) end
 							local rc, rf = op (kwenv.proc, db, attr, vvala, vvalb, vstart, cmd, env, kwenv)
 							if DEBUG then debugProcVal (rf, -1) end
@@ -3880,18 +3921,18 @@ function cexpr_newserial_op (op, cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	key = params.car
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						"[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car),
 						kwenv,
 						function ()
-							local vkey = to_string_opt (evalFunc (key, env))
+							local vkey = to_string_opt (evalExpr (key, env))
 							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. texpdump (cmd.car) .. ": key=" .. describe (vkey), 1) end
 							local rc, rf = op (kwenv.proc, vkey)
 							if DEBUG then debugProcVal (rf, -1) end
@@ -3917,12 +3958,12 @@ function cexpr_reset_db_serial (cmd, env)
 										{})
 
 	local db
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -3955,10 +3996,10 @@ function cexpr_dump_serial (cmd, env)
 	if consp (params) then
 		key = params.car
 		params = params.cdr
-		if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+		if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	end
 
-	if filterProcPushEnv (kwenv, cmd, env) then return nil end
+	if filterProcPushEnv (kwenv, cmd, env) then return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4008,7 +4049,7 @@ function cexpr_restore_serial (cmd, env)
 		if consp (params) then
 			val = params.car
 			params = params.cdr
-			if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+			if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 		end
 	end
 
@@ -4062,7 +4103,7 @@ function cexpr_coneval (cmd, env)
 	-- (coneval EXPR ...)
 	local e = cmd.cdr
 
-	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (e) then writeFnError (env, cmd, nil, nParamError) return {} end
 
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4164,11 +4205,11 @@ function cexpr_conproc (cmd, env)
 		local vars = {}
 		local dvar = kwenv.var
 		if dvar then
-			if op_localvar (vars, dvar, cmd, env) then return nil end
+			if op_localvar (vars, dvar, cmd, env) then return {} end
 		end
 		dvar = kwenv["e-var"]
 		if dvar then
-			if op_localvar (vars, dvar, cmd, env, true) then return nil end
+			if op_localvar (vars, dvar, cmd, env, true) then return {} end
 		end
 		-- ローカル変数あり
 		return ConsumerStarter.new (
@@ -4185,7 +4226,7 @@ function cexpr_conproc (cmd, env)
 								return pushEnv (localenv, env,
 											function (env)
 												local rc = true
-												if breakif and checkBool (evalFunc (breakif, env)) then
+												if breakif and checkBool (evalExpr (breakif, env)) then
 													if DEBUG then debugLog ("break") end
 													if onbreak then
 														if DEBUG then debugLog ("on-break") end
@@ -4196,7 +4237,7 @@ function cexpr_conproc (cmd, env)
 														rc = v:next (key, val)
 														if DEBUG then debugProcVal (rc) end
 														-- on-breakのためにprocessorを実行した後にもチェックする
-														if breakif and checkBool (evalFunc (breakif, env)) then
+														if breakif and checkBool (evalExpr (breakif, env)) then
 															if DEBUG then debugLog ("break") end
 															if onbreak then
 																if DEBUG then debugLog ("on-break") end
@@ -4226,7 +4267,7 @@ function cexpr_conproc (cmd, env)
 							function (key, val)
 								if DEBUG then debugLog ("conproc begin", 1) end
 								local rc = true
-								if breakif and checkBool (evalFunc (breakif, env)) then
+								if breakif and checkBool (evalExpr (breakif, env)) then
 									if DEBUG then debugLog ("break") end
 									if onbreak then
 										if DEBUG then debugLog ("on-break") end
@@ -4237,7 +4278,7 @@ function cexpr_conproc (cmd, env)
 										rc = v:next (key, val)
 										if DEBUG then debugProcVal (rc) end
 										-- on-breakのためにprocessorを実行した後にもチェックする
-										if breakif and checkBool (evalFunc (breakif, env)) then
+										if breakif and checkBool (evalExpr (breakif, env)) then
 											if DEBUG then debugLog ("break") end
 											if onbreak then
 												if DEBUG then debugLog ("on-break") end
@@ -4273,7 +4314,7 @@ function cexpr_local_var (cmd, env)
 	while consp (params) do
 		e = evalExpr (params.car, env)
 		params = params.cdr
-		if op_localvar (vars, e, cmd, env) then return nil end
+		if op_localvar (vars, e, cmd, env) then return {} end
 	end
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4298,7 +4339,7 @@ function cexpr_local_e_var (cmd, env)
 	while consp (params) do
 		e = evalExpr (params.car, env)
 		params = params.cdr
-		if op_localvar (vars, e, cmd, env, true) then return nil end
+		if op_localvar (vars, e, cmd, env, true) then return {} end
 	end
 	return ConsumerStarter.new (
 						t_to_string (cmd.car),
@@ -4322,10 +4363,10 @@ function cexpr_conproc_vector_each (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local var = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local vec = params.car
 	params = params.cdr
 	-- ループを通してlimitをカウントするため、ループの外で評価する。
@@ -4335,7 +4376,7 @@ function cexpr_conproc_vector_each (cmd, env)
 		p = evalExpr (params.car, env)
 		params = params.cdr
 		if not nullp (p) then
-			if not consumerfnp (p) then writeFnError (env, cmd, p, typeError) return nil end
+			if not consumerfnp (p) then writeFnError (env, cmd, p, typeError) return {} end
 			table.insert (proc, p)
 		end
 	end
@@ -4386,13 +4427,13 @@ function cexpr_conproc_table_each (cmd, env)
 										},
 									kwenv)
 
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local varkey = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local varval = t_to_string (evalExpr (params.car, env))
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	local tbl = params.car
 	params = params.cdr
 	local proc = {}
@@ -4401,7 +4442,7 @@ function cexpr_conproc_table_each (cmd, env)
 		p = evalExpr (params.car, env)
 		params = params.cdr
 		if not nullp (p) then
-			if not consumerfnp (p) then writeFnError (env, cmd, p, typeError) return nil end
+			if not consumerfnp (p) then writeFnError (env, cmd, p, typeError) return {} end
 			table.insert (proc, p)
 		end
 	end
@@ -4418,6 +4459,7 @@ function cexpr_conproc_table_each (cmd, env)
 												if DEBUG then debugLog ("conproc-table-each begin", 1) end
 												local tbl2 = evalExpr (tbl, env)
 												if nullp (tbl2) or not tablep (tbl2) then
+													if DEBUG then debugLog ("conproc-table-each end", -1) end
 													return procVal (rc, kwenv)
 												end
 												for k, v in pairs (tbl2) do
@@ -4454,15 +4496,15 @@ function expr_reindex (cmd, env)
 										{})
 
 	local db, attr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	db = evalExpr_db (params.car, env, cmd)
 	params = params.cdr
-	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if not consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 	attr = evalExpr (params.car, env)
 	params = params.cdr
-	if consp (params) then writeFnError (env, cmd, nil, nParamError) return nil end
+	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return nil end
+	if not db then return {} end
 	if stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
@@ -4478,7 +4520,7 @@ function expr_reindex (cmd, env)
 
 	op_reindex (db, attr)
 
-	return nil
+	return {}
 end
 
 function expr_schema (cmd, env)
@@ -4486,7 +4528,9 @@ function expr_schema (cmd, env)
 	local ans
 	local fn = {next1 = function (self, tbl)
 					ans = tbl
-				end}
+				end;
+				[mType] = kConsumerFn
+				}
 	op_schema (fn)
 	return ans
 end
@@ -4579,6 +4623,8 @@ optable = {
 		["concat"] = expr_concat;
 --DOC:| substr |('''substr''' ''STRING'' ''START'' [''LENGTH'']) -> ''STRING''|文字列の切り出し。''START''は0はじまり。''LENGTH''を省略すると、末尾まで。|
 		["substr"] = expr_substr;
+--DOC:| tailstr |('''tailstr''' ''STRING'' ''START'' [''LENGTH'']) -> ''STRING''|文字列の切り出し。''START''は0はじまり。末尾から数えての文字数。''LENGTH''を省略すると、先頭まで。|
+		["tailstr"] = expr_tailstr;
 --DOC:| strlen |('''strlen''' ''STRING'') -> ''NUMBER''|文字列の長さ。|
 		["strlen"] = expr_strlen;
 --DOC:| regexp-match |('''regexp-match''' ''PATTERN'' ''TEXT'') -> ''BOOL''|正規表現''PATTERN''に''TEXT''がマッチしたらtrueを返す。|
@@ -4801,14 +4847,14 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 	v = table.remove (a, 1)
 	if string.sub (v, 1, 1) == kEVarPrefixCh then
 		writeFnError (env, nil, v, "bad name")
-		return nil
+		return {}
 	end
 	w = tonumber (v)
 	if w then v = w + 1 end					-- 0始まり
 	if eflag and #a == 0 then v = kEVarPrefix .. v end
 	while i >= 1 do
 		q = env[i][v]
-		if q then
+		if q ~= nil then
 			p = q
 			break
 		end
@@ -4817,7 +4863,7 @@ function evalSym (e, env, eflag)		-- envはTable。mTypeのチェックは行わ
 	for i, v in ipairs (a) do
 		if string.sub (v, 1, 1) == kEVarPrefixCh then
 			writeFnError (env, nil, v, "bad name")
-			return nil
+			return {}
 		end
 		if p then
 			local w = tonumber (v)
@@ -4977,7 +5023,7 @@ function evalVTF (e, env)
 	elseif tablep (e) then
 		return evalTable (e, env)
 	else
-		return evalFunc (e, env)
+		return evalExpr (e, env)
 	end
 end
 
@@ -5043,7 +5089,7 @@ function evalLambda (cmd, args, env)
 					end
 				end
 				writeFnError (env, cmd, a[1], paramError)
-				return nil			-- exitしろ
+				return {}			-- exitしろ
 			elseif s == "#" then
 				s = string.sub (a[1], 2)
 				if kwlist then
@@ -5054,7 +5100,7 @@ function evalLambda (cmd, args, env)
 					end
 				end
 				writeFnError (env, cmd, a[1], paramError)
-				return nil			-- exitしろ
+				return {}			-- exitしろ
 			end
 		end
 		f = table.remove (palist, 1)
@@ -5086,10 +5132,6 @@ function evalLambda (cmd, args, env)
 							end
 						end)
 	return ans
-end
-
-function evalFunc (e, env)
-	return evalExpr (e, env)
 end
 
 function evalExpr (e, env)	-- lambdaは自身を返す
