@@ -14,27 +14,29 @@ if kt then
 	sid_len = string.len (sid)
 	optable = nil
 end
-DEBUG = true
+-- DEBUG = true
+local Trace
 local xtmax = 8589934592
 local kNUL = "\x00"
 local kFF = "\xff"
 -- type labels::
 local kPunctuation = 0		-- 0: 記号
-local kSymbol = 1				-- 1: シンボル
-local kNumber = 2				-- 2: 数値
-local kString = 3				-- 3: 文字列
+local kSymbol = 1			-- 1: シンボル
+local kNumber = 2			-- 2: 数値
+local kString = 3			-- 3: 文字列
 local kInteger = 4			-- 4: 整数
 local kCons = 8				-- 8: cons cell
 local kBoolean = 9			-- 9: boolean
 local kVector = 16			-- 16: vector
-local kTable = 17				-- 17: table
+local kTable = 17			-- 17: table
 local kConsumerFn = 20		-- 20: function chain
-local kEVarPrefixCh = "-"		-- E変数のプレフィックス
-local mType = "-~-\1"			-- Map, Vectorタイプのtableに入れる。
-local kEVarPrefix = "-*-\1"		-- E変数のプレフィックス
+local kEVarPrefixCh = "-"	-- E変数のプレフィックス
+local mType = "-~-\1"		-- Map, Vectorタイプのtableに入れる。
+local kEVarPrefix = "-*-\1"	-- E変数のプレフィックス
 local prognOutmap = "output"
 local prognOutmapTable = "output-table"
 local prognError = "ERROR"
+local prognTrace = "TRACE"
 local parentEnv = "_parent"
 local nParamError = "wrong number of parameters"
 local paramError = "bad parameter"
@@ -1202,9 +1204,8 @@ function filterLimit (kwenv)
 end
 
 function procOffset (kwenv, cmd)
-	if kwenv.offset and kwenv.offset > 0 then
---		if DEBUG then print ("==> " .. t_to_string (cmd.car) .. ": offset") end
-		if DEBUG then debugLog (t_to_string (cmd.car) .. ": offset") end
+	if not nullp (kwenv.offset) and kwenv.offset > 0 then
+		if DEBUG then debugLog ("offset") end
 		kwenv.offset = kwenv.offset - 1
 		return true
 	end
@@ -1213,12 +1214,12 @@ end
 
 function procLimit (kwenv, cmd, key, env)
 	if checkBool (kwenv.once) then
-		if DEBUG then debugLog (t_to_string (cmd.car) .. ": once") end
+		if DEBUG then debugLog ("once") end
 		return false
 	end
-	if kwenv.limit then
+	if not nullp (kwenv.limit) then
 		if kwenv.limit <= 0 then
-			if DEBUG then debugLog (t_to_string (cmd.car) .. ": limit") end
+			if DEBUG then debugLog ("limit") end
 			if key and kwenv.next then
 				bindSym (kwenv.next, key, env)
 			end
@@ -1322,20 +1323,32 @@ function writeFnError (env, cmd, name, msg)
 end
 
 local LogIndent = 0
+function debugLogIM (pre, msg)
+	msg = pre .. string.rep (" | ", LogIndent) .. msg
+	if Trace then Trace = Trace .. msg .. "\n"
+	else print (msg)
+	end
+end
+
 function debugLog (msg, indent)
 	if indent and indent < 0 then LogIndent = LogIndent + indent end
-	if msg then
-		print ("==> " .. string.rep (" | ", LogIndent) .. msg)
-	end
+	if msg then debugLogIM ("==> ", msg) end
 	if indent and indent > 0 then LogIndent = LogIndent + indent end
 end
 
 function debugLogExp (msg)
-	print (">   " .. string.rep (" | ", LogIndent) .. msg)
+	debugLogIM (">   ", msg)
+end
+
+function debugLogVal (msg)
+	debugLogIM (">>  ", msg)
 end
 
 function debugProcVal (rc, indent)
-	print ("==> " .. string.rep (" | ", LogIndent) .. "proc-value := " .. texpdump (rc))
+	local msg = ">>  " .. string.rep (" | ", LogIndent) .. "proc-value := " .. texpdump (rc)
+	if Trace then Trace = Trace .. msg .. "\n"
+	else print (msg)
+	end
 	if indent and indent < 0 then LogIndent = LogIndent + indent end
 end
 
@@ -2368,42 +2381,42 @@ function expr_vector_sort (cmd, env)
 	end
 
 	if not indexType then
-		if kwenv.asc or not kwenv.desc then
-			if kwenv.text or not kwenv.num then
+		if checkBool (kwenv.asc) or not checkBool (kwenv.desc) then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_str_asc (vec)
 			else
 				sort_num_asc (vec)
 			end
 		else
-			if kwenv.text or not kwenv.num then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_str_desc (vec)
 			else
 				sort_num_desc (vec)
 			end
 		end
 	elseif indexType == kVector then
-		if kwenv.asc or not kwenv.desc then
-			if kwenv.text or not kwenv.num then
+		if checkBool (kwenv.asc) or not checkBool (kwenv.desc) then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_tbl_str_asc (vec, index)
 			else
 				sort_tbl_num_asc (vec, index)
 			end
 		else
-			if kwenv.text or not kwenv.num then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_tbl_str_desc (vec, index)
 			else
 				sort_tbl_num_desc (vec, index)
 			end
 		end
 	elseif indexType == kTable then
-		if kwenv.asc or not kwenv.desc then
-			if kwenv.text or not kwenv.num then
+		if checkBool (kwenv.asc) or not checkBool (kwenv.desc) then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_tbl_str_asc (vec, index)
 			else
 				sort_tbl_num_asc (vec, index)
 			end
 		else
-			if kwenv.text or not kwenv.num then
+			if checkBool (kwenv.text) or not checkBool (kwenv.num) then
 				sort_tbl_str_desc (vec, index)
 			else
 				sort_tbl_num_desc (vec, index)
@@ -2626,7 +2639,7 @@ function expr_cond (cmd, env)
 		e = e.cdr
 		if consp (prog) then
 			if checkBool (evalExpr (prog.car, env)) then
-				if DEBUG then debugLog (nil, 1) debugLog ("true") end
+				if DEBUG then debugLog (nil, 1) debugLogVal ("true") end
 				prog = prog.cdr
 				while consp (prog) do
 					ans = evalExpr (prog.car, env)
@@ -2714,7 +2727,7 @@ function expr_getvar (cmd, env)
 
 	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
-		if v > 0 and #env - v > 0 then
+		if v and v > 0 and #env - v > 0 then
 			local newenv = {}
 			for i = 1, #env - v do
 				table.insert (newenv, env[i])
@@ -2757,7 +2770,7 @@ function expr_getevar (cmd, env)
 
 	if not nullp (kwenv.parent) then
 		local v = tonumber (kwenv.parent)
-		if v > 0 and #env - v > 0 then
+		if v and v > 0 and #env - v > 0 then
 			local newenv = {}
 			for i = 1, #env - v do
 				table.insert (newenv, env[i])
@@ -3020,7 +3033,7 @@ function cexpr_output (cmd, env)
 									for i, v in ipairs (sel) do
 										table.insert (storemap, safenil (evalVTF (v, env)))	-- ベクタの要素数をずらさない
 									end
-									if DEBUG then debugLog ("output (" .. describe (name) .. ", " .. texpdump_short (storemap[#storemap]) .. ")") end
+									if DEBUG then debugLogVal ("output (" .. describe (name) .. ", " .. texpdump_short (storemap[#storemap]) .. ")") end
 								end
 							end
 							if DEBUG then debugLog (nil, -1) end
@@ -3081,7 +3094,7 @@ function cexpr_output_table (cmd, env)
 										else
 											if k ~= "" then
 												storemap[k] = safenil (evalVTF (v[2], env))		-- nil値は要素を削除する仕様は、ローカル変数の定義を削除してしまう。
-												if DEBUG then debugLog ("output-table (" .. describe (name) .. ", {" .. describe (k) .. " => " .. texpdump_short (storemap[k]) .. "})") end
+												if DEBUG then debugLogVal ("output-table (" .. describe (name) .. ", {" .. describe (k) .. " => " .. texpdump_short (storemap[k]) .. "})") end
 											end
 										end
 									end
@@ -3259,7 +3272,7 @@ function cexpr_select (cmd, env)
 
 	filterOffset (kwenv)
 	filterLimit (kwenv)
-	if kwenv.proc and not consumerfnp (kwenv.proc) then writeFnError (env, cmd, kwenv.proc, typeError) return {} end
+	if not nullp (kwenv.proc) and not consumerfnp (kwenv.proc) then writeFnError (env, cmd, kwenv.proc, typeError) return {} end
 	if kwenv["false-proc"] and not consumerfnp (kwenv["false-proc"]) then writeFnError (env, cmd, kwenv.proc, typeError) return {} end
 
 	return ConsumerStarter.new (
@@ -3269,7 +3282,7 @@ function cexpr_select (cmd, env)
 							local rc = true
 							if DEBUG then debugLog ("select", 1) end
 							if checkBool (evalExpr (cond, env)) then
-								if DEBUG then debugLog ("true") end
+								if DEBUG then debugLogVal ("true") end
 								if not procOffset (kwenv, cmd) then
 									rc = procLimit (kwenv, cmd, key, env)
 									if kwenv._procbreak then
@@ -3280,7 +3293,7 @@ function cexpr_select (cmd, env)
 									end
 								end
 							else
-								if DEBUG then debugLog ("false") end
+								if DEBUG then debugLogVal ("false") end
 								if consumerfnp (kwenv["false-proc"]) then
 									if not procOffset (kwenv, cmd) then
 										rc = procLimit (kwenv, cmd, key, env)
@@ -3339,7 +3352,7 @@ function cexpr_dbadd_op (op, cmd, env)
 	params = params.cdr
 	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if kwenv.unique and not vectorp (kwenv.unique) then writeFnError (env, cmd, kwenv.unique, typeError) return {} end
+	if not nullp (kwenv.unique) and not vectorp (kwenv.unique) then writeFnError (env, cmd, kwenv.unique, typeError) return {} end
 --	if kwenv["unique-replace"] then
 --		if not vectorp (kwenv["unique-replace"]) then writeFnError (env, cmd, kwenv["unique-replace"], typeError) return {} end
 --		kwenv.unique = kwenv["unique-replace"]
@@ -3970,7 +3983,8 @@ function cexpr_reset_db_serial (cmd, env)
 						kwenv,
 						function ()
 							local rc = true
-							if DEBUG then debugLog ("reset-db-serial: " .. tostring (dbname[db]), 1) end
+--							if DEBUG then debugLog ("reset-db-serial: " .. tostring (dbname[db]), 1) end
+							if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "].reset-db-serial", 1) end
 							db_serial_reset (db)
 							if DEBUG then debugLog (nil, -1) end
 							return procVal (rc, kwenv)
@@ -4006,20 +4020,21 @@ function cexpr_dump_serial (cmd, env)
 						kwenv,
 						function ()
 							local vkey
-							if kwenv.db then
+							if not nullp (kwenv.db) then
 								local db = evalExpr_db (kwenv.db, env, cmd)
 								if db then
 									vkey = db:path () .. sid
 								else
 									vkey = nil
 								end
-								if DEBUG then debugLog (texpdump (cmd.car) .. ": db=" .. tostring (dbname[db]), 1) end
+--								if DEBUG then debugLog (t_to_string (cmd.car) .. ": db=" .. tostring (dbname[db]), 1) end
+								if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car), 1) end
 							else
 								vkey = evalExpr (key, env)
 								if vkey then
 									vkey = t_to_string (vkey)
 								end
-								if DEBUG then debugLog (texpdump (cmd.car) .. ": key=" .. tostring (vkey), 1) end
+								if DEBUG then debugLog (t_to_string  (cmd.car) .. ": key=" .. tostring (vkey), 1) end
 							end
 							local rt, rc
 							if vkey then
@@ -4058,7 +4073,7 @@ function cexpr_restore_serial (cmd, env)
 						kwenv,
 						function ()
 							local vkey, vval
-							if kwenv.db then
+							if not nullp (kwenv.db) then
 								local db = evalExpr_db (kwenv.db, env, cmd)
 								if db then
 									vkey = db:path () .. sid
@@ -4066,13 +4081,14 @@ function cexpr_restore_serial (cmd, env)
 									vkey = nil
 								end
 								vval = evalExpr (key, env)	-- パラメータがずれる
-								if DEBUG then debugLog (texpdump (cmd.car) .. ": db=" .. tostring (dbname[db]), 1) end
+--								if DEBUG then debugLog (t_to_string (cmd.car) .. ": db=" .. tostring (dbname[db]), 1) end
+								if DEBUG then debugLog ("[" .. tostring (dbname[db]) .. "]." .. t_to_string (cmd.car), 1) end
 							elseif key then
 								vkey = evalExpr (key, env)
 								vval = evalExpr (val, env)
-								if DEBUG then debugLog (texpdump (cmd.car) .. ": key=" .. tostring (vkey), 1) end
+								if DEBUG then debugLog (t_to_string (cmd.car) .. ": key=" .. tostring (vkey), 1) end
 							else
-								if DEBUG then debugLog (texpdump (cmd.car) .. ": key=" .. tostring (vkey), 1) end
+								if DEBUG then debugLog (t_to_string (cmd.car) .. ": key=" .. tostring (vkey), 1) end
 							end
 							local rc = true
 							if type (vkey) == "string" then
@@ -4504,8 +4520,10 @@ function expr_reindex (cmd, env)
 	params = params.cdr
 	if consp (params) then writeFnError (env, cmd, nil, nParamError) return {} end
 
-	if not db then return {} end
-	if stringp (attr) then
+	if not db then
+		writeFnError (env, cmd, attr, noDBError)
+		return {}
+	elseif stringp (attr) then
 		attr = {attr; [mType] = kVector}
 	elseif vectorp (attr) then
 		-- string vectorにする
@@ -4516,8 +4534,10 @@ function expr_reindex (cmd, env)
 		attr = a
 	else
 		writeFnError (env, cmd, attr, typeError)
+		return {}
 	end
 
+	debugLog (t_to_string (cmd.car) .. ": " .. tostring (dbname[db]) .. "//" .. texpdump (attr))
 	op_reindex (db, attr)
 
 	return {}
@@ -4821,9 +4841,9 @@ optable = {
 		["conproc-table-each"] = cexpr_conproc_table_each;
 }
 
-if DEBUG then
-	optable["sleep"] = expr_sleep;
-end
+--if DEBUG then
+--	optable["sleep"] = expr_sleep;
+--end
 
 function pushEnv (tbl, env, fn)
 	-- _parentを参照することで、上位の環境にアクセスできる。
@@ -5222,28 +5242,28 @@ function db_serial_reset (db)
 	end
 end
 
-function db_index_set_item_t (key, idxdbdb, val, xt)
-	if not idxdbdb:set (val .. kNUL .. key, key, xt) then
-		kt.log ("error", "adding an index entry failed")
+function db_index_set_item_t (key, idxspec, val, xt)
+	if not idxspec.db:set (val .. kNUL .. key, key, xt) then
+		kt.log ("error", "adding an index entry failed: "..tdump (idxspec.attrspecs)..":["..describe (val)..","..describe (key).."]")
 	end
 end
 
 function db_index_set_item (key, idxspec, val, xt)
 	if idxspec and val then
-		db_index_set_item_t (key, idxspec.db, val, xt)
+		db_index_set_item_t (key, idxspec, val, xt)
 	end
 end
 
-function db_index_del_item_t (key, idxdbdb, val)	-- valがnilはエラー
+function db_index_del_item_t (key, idxspec, val)	-- valがnilはエラー
 	local i = val .. kNUL .. key
-	if not idxdbdb:remove (i) then
-		kt.log ("error", "removing an index entry failed")
+	if not idxspec.db:remove (i) then
+		kt.log ("error", "removing an index entry failed: "..tdump (idxspec.attrspecs)..":["..describe (val)..","..describe (key).."]")
 	end
 end
 
 function db_index_del_item (key, idxspec, val)	-- valがnilはエラー
 	if idxspec and val then
-		db_index_del_item_t (key, idxspec.db, val)
+		db_index_del_item_t (key, idxspec, val)
 	end
 end
 
@@ -5328,7 +5348,7 @@ function db_index_set (db, key, obj, xt)
 	for cattr, idxspec in pairs (idx[db]) do
 		local val = index_val (idxspec, obj)
 		if val then
-			db_index_set_item_t (key, idxspec.db, val, xt)
+			db_index_set_item_t (key, idxspec, val, xt)
 		end
 	end
 end
@@ -5338,7 +5358,7 @@ function db_index_del (db, key, obj, exdb)
 		if idxspec.db ~= exdb then
 			local val = index_val (idxspec, obj)
 			if val then
-				db_index_del_item_t (key, idxspec.db, val)
+				db_index_del_item_t (key, idxspec, val)
 			end
 		end
 	end
@@ -5798,7 +5818,8 @@ function op_dbadd (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 		-- mapdumpは、テキストと数値型を区別しない
 		local mobj = kt.mapdump (obj)
 		obj[keynames[db]] = vkey
-		db_index_set (db, vkey, obj, xt)
+--		db_index_set (db, vkey, obj, xt)
+		db_index_set (db, vkey, kt.mapload (kt.mapdump (obj)), xt)
 		return mobj, xt
 	end
 	--
@@ -5860,7 +5881,8 @@ function op_dbset (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 		obj.mt = kt.time ()
 		local mobj = kt.mapdump (obj)
 		obj[keynames[db]] = vkey
-		db_index_set (db, vkey, obj, xt)
+--		db_index_set (db, vkey, obj, xt)
+		db_index_set (db, vkey, kt.mapload (kt.mapdump (obj)), xt)
 		return mobj, xt
 	end
 	--
@@ -5924,7 +5946,8 @@ function op_dbupdate (outfn, db, key, obj, xt, uniqmattr, env, cmd)
 			o2.mt = kt.time ()
 			local mobj = kt.mapdump (o2)
 			o2[keynames[db]] = vkey
-			db_index_set (db, vkey, o2, xt)
+--			db_index_set (db, vkey, o2, xt)
+			db_index_set (db, vkey, kt.mapload (kt.mapdump (o2)), xt)
 			return mobj, xt
 		else		-- レコードがない
 			key = nil
@@ -6531,7 +6554,7 @@ function op_reindex (db, attr)
 					obj[keynames[db]] = key
 					val = index_val (idxspec, obj)
 					if val then
-						db_index_set_item_t (key, idxspec.db, val, xt)
+						db_index_set_item_t (key, idxspec, val, xt)
 					end
 				else
 					break
@@ -6656,9 +6679,17 @@ function progn (inmap, outmap)
 	if inmap.debug then
 		DEBUG = 1
 	end
+	if inmap.trace then
+		DEBUG = 1
+		Trace = ""
+	end
 	env[prognOutmap] = {[mType] = kVector}
 	env[prognOutmapTable] = {[mType] = kTable}
-	if DEBUG then print ("progn env:" .. envdump (env) .. ", eval:" .. texpdump (expr)) end
+	if DEBUG then
+		if Trace then Trace = "progn env: " .. envdump (env) .. "\n" .. "progn eval:" .. texpdump (expr) .. "\n"
+		else print ("progn env: " .. envdump (env)) print ("progn eval:" .. texpdump (expr))
+		end
+	end
 	--
 	local rc
 	while consp (expr) do
@@ -6674,6 +6705,9 @@ function progn (inmap, outmap)
 	end
 	if env[prognError] and type (env[prognOutmapTable]) == "table" then
 		env[prognOutmapTable][prognError] = env[prognError]
+	end
+	if Trace and type (env[prognOutmapTable]) == "table" then
+		env[prognOutmapTable][prognTrace] = Trace
 	end
 	output_texp (outmap, env[prognOutmap], env[prognOutmapTable]);
 	DEBUG = oDEBUG
